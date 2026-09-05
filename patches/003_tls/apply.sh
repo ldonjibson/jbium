@@ -30,12 +30,18 @@ content = p.read_text()
 # Find where cipher suites are configured
 # Add session-based randomization
 
+STEALTH_MARKER = "STEALTH PATCH: TLS Fingerprint Randomization"
+
 INJECTION = """
 // STEALTH PATCH: TLS Fingerprint Randomization
 // ==============================================
 // Real Chrome varies its GREASE values randomly.
 // Automated Chrome (via CDP) has been observed to have
 // less variation. This patch restores natural randomization.
+
+#include <cstdint>
+#include <ctime>
+#include <random>
 
 namespace {
     // Session-level seed (generated once per browser session)
@@ -66,18 +72,21 @@ namespace {
 // END STEALTH PATCH
 """
 
-# Inject at the top of the namespace
-content = f"{INJECTION}\n\n{content}"
+if STEALTH_MARKER in content:
+    print("⏭️  TLS patch already applied, skipping")
+else:
+    # Inject at the top of the namespace
+    content = f"{INJECTION}\n\n{content}"
 
-# Find where cipher suites are set and modify
-old_config = """SSLConfig::SSLConfig() {"""
-new_config = """SSLConfig::SSLConfig() {
+    # Find where cipher suites are set and modify
+    old_config = """SSLConfig::SSLConfig() {"""
+    new_config = """SSLConfig::SSLConfig() {
   // STEALTH: Use session GREASE values
   uint16_t grease = GetSessionGreaseValue();"""
 
-if old_config in content:
-    content = content.replace(old_config, new_config)
-    print("✅ TLS GREASE randomization patched")
+    if old_config in content:
+        content = content.replace(old_config, new_config)
+        print("✅ TLS GREASE randomization patched")
 
 p.write_text(content)
 print("✅ TLS fingerprint patch applied")
