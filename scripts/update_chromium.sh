@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# Resolve this script's own directory now, before the `cd` below moves us
+# into the Chromium source tree — computing it after that `cd` silently
+# resolves relative to the wrong place.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 CHROMIUM_DIR="${CHROMIUM_DIR:-$HOME/jbium/chromium}"
 CHROMIUM_SRC="$CHROMIUM_DIR/src"
 NEW_VERSION="${1:-}"
@@ -25,7 +30,7 @@ git fetch origin
 
 if [ -n "$NEW_VERSION" ]; then
     echo "  Checking out: $NEW_VERSION"
-    git checkout "tags/$NEW_VERSION" -b "stealth-$NEW_VERSION"
+    git checkout "tags/$NEW_VERSION" -b "jbium-$NEW_VERSION"
 else
     echo "  Pulling latest..."
     git pull origin main
@@ -40,7 +45,6 @@ gclient runhooks
 
 # Re-apply patches
 echo "  Re-applying patches..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$SCRIPT_DIR/../patches/apply_all.sh"
 
 echo ""

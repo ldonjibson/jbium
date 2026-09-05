@@ -6,6 +6,12 @@
 
 set -euo pipefail
 
+# Resolve this script's own directory now, before any `cd` below moves us
+# away from it — computing this later (e.g. relative to Chromium's source
+# tree) silently resolves to the wrong place.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATCHES_DIR="$SCRIPT_DIR/../patches"
+
 CHROMIUM_DIR="$HOME/jbium/chromium"
 OUTPUT_DIR="$CHROMIUM_DIR/src/out/Release"
 
@@ -68,9 +74,6 @@ ok "Hooks complete"
 
 # ── Step 4: Apply patches ──
 log "Step 4/6: Applying stealth patches..."
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCHES_DIR="$SCRIPT_DIR/../patches"
 
 for patch_dir in "$PATCHES_DIR"/0*/; do
     if [ -f "$patch_dir/apply.sh" ]; then
