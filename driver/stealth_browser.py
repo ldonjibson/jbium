@@ -286,7 +286,7 @@ class Jbium:
             },
             "geoip": {
                 "enabled": True,
-                "database_path": "./data/GeoLite2-City.mmdb",
+                "database_path": "./data/geoip/GeoLite2-City.mmdb",
             },
             "anti_detection": {
                 "filter_webrtc": True,
@@ -872,19 +872,23 @@ class StealthPage:
 def get_random_webshare_proxy(
     username_prefix: Optional[str] = None,
     password: Optional[str] = None,
-    endpoint: str = "p.webshare.io",
-    port: int = 80,
+    endpoint: Optional[str] = None,
+    port: Optional[int] = None,
     mode: str = "numbered",
 ) -> str:
     """
     Generate a random Webshare proxy URL.
 
-    Credentials are never hardcoded here — pass them explicitly, or set
-    STEALTH_WEBSHARE_USERNAME / STEALTH_WEBSHARE_PASSWORD in the environment.
+    Nothing is hardcoded here — pass values explicitly, or set
+    STEALTH_WEBSHARE_USERNAME / STEALTH_WEBSHARE_PASSWORD / STEALTH_WEBSHARE_ENDPOINT /
+    STEALTH_WEBSHARE_PORT in the environment. Endpoint/port fall back to
+    Webshare's default proxy host if neither is given.
     """
 
     username_prefix = username_prefix or os.environ.get("STEALTH_WEBSHARE_USERNAME")
     password = password or os.environ.get("STEALTH_WEBSHARE_PASSWORD")
+    endpoint = endpoint or os.environ.get("STEALTH_WEBSHARE_ENDPOINT", "p.webshare.io")
+    port = port or int(os.environ.get("STEALTH_WEBSHARE_PORT", "80"))
 
     if not username_prefix or not password:
         raise RuntimeError(

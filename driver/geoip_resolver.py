@@ -81,7 +81,7 @@ class GeoIPResolver:
     Last resort: Smart defaults
     """
     
-    def __init__(self, db_path: str = "./data/GeoLite2-City.mmdb"):
+    def __init__(self, db_path: str = "./data/geoip/GeoLite2-City.mmdb"):
         self.db_path = Path(db_path)
         self._reader = None
         self._locale_data = self._load_locale_data()

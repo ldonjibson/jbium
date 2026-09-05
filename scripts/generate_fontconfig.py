@@ -260,13 +260,13 @@ def _enable_section(content: str, marker: str) -> str:
     
     # Remove start marker (uncomment the section)
     content = content.replace(
-        f"<!-- {{{marker}_START}}} -->",
+        "<!-- {{" + marker + "_START}} -->",
         f"<!-- {marker}_START -->"  # Keep marker for later cleanup
     )
-    
+
     # Remove end marker
     content = content.replace(
-        f"<!-- {{{marker}_END}}} -->",
+        "<!-- {{" + marker + "_END}} -->",
         f"<!-- {marker}_END -->"
     )
     

@@ -12,20 +12,10 @@ pyyaml>=6.0             # YAML config parsing
 # ── GeoIP ──
 geoip2>=4.7.0           # MaxMind GeoLite2 database reader
 
-# ── Fingerprinting ──
-Pillow>=10.0.0          # Image processing (canvas tests)
-cryptography>=41.0.0   # Hashing utilities
-
 # ── Testing ──
 pytest>=7.4.0           # Test framework
 pytest-asyncio>=0.21.0  # Async test support
 pytest-cov>=4.1.0      # Coverage reports
 
-# ── Build tools ──
-requests>=2.31.0        # HTTP for download scripts
-tqdm>=4.66.0            # Progress bars in scripts
-
 # ── Optional (for advanced features) ──
-boto3>=1.28.0           # AWS S3 upload
-rich>=13.0.0            # Pretty terminal output (CLI)
-click>=8.1.0            # CLI argument parsing
+boto3>=1.28.0           # AWS S3 upload (scripts/upload_s3.py)

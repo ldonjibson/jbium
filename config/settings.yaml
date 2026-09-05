@@ -60,7 +60,7 @@ fingerprint:
 # GeoIP
 geoip:
   enabled: true
-  database_path: "./data/GeoLite2-City.mmdb"
+  database_path: "./data/geoip/GeoLite2-City.mmdb"
   # Fallback if GeoIP fails
   fallback_country: "US"
   fallback_timezone: "America/New_York"
