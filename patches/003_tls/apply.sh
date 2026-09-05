@@ -17,76 +17,106 @@ Key modifications:
 3. Vary session ticket behavior
 """
 
+import subprocess
+import re
 from pathlib import Path
-import random
 
 p = Path("net/ssl/ssl_config.cc")
 if not p.exists():
-    print("⚠️ ssl_config.cc not found")
+    print("⚠️  ssl_config.cc not found")
     exit(1)
 
 content = p.read_text()
 
-# Find where cipher suites are configured
-# Add session-based randomization
-
 STEALTH_MARKER = "STEALTH PATCH: TLS Fingerprint Randomization"
 
+if STEALTH_MARKER in content:
+    print("⏭️  Already patched — reverting to pristine before re-applying")
+    subprocess.run(["git", "checkout", "--", str(p)], check=True)
+    content = p.read_text()
+
+# ─────────────────────────────────────────────
+# Insert after the LAST #include line, not before it — the injected code
+# needs uint32_t/uint16_t/std::time, which only exist once real headers
+# have actually been included above it.
+# ─────────────────────────────────────────────
+
+include_pattern = re.compile(r"^#include\s+.*$", re.MULTILINE)
+includes = list(include_pattern.finditer(content))
+
+if not includes:
+    print("❌ No #include lines found in ssl_config.cc")
+    exit(1)
+
+insertion_point = includes[-1].end()
+remaining = content[insertion_point:]
+insertion_point += len(remaining) - len(remaining.lstrip("\n"))
+
 INJECTION = """
+// ═══════════════════════════════════════════════════════════
 // STEALTH PATCH: TLS Fingerprint Randomization
-// ==============================================
-// Real Chrome varies its GREASE values randomly.
-// Automated Chrome (via CDP) has been observed to have
-// less variation. This patch restores natural randomization.
+// ═══════════════════════════════════════════════════════════
+// Real Chrome varies its GREASE values randomly (RFC 8701).
+// Automated Chrome (via CDP) has been observed to have less
+// variation. This patch restores natural per-session randomization.
+// ═══════════════════════════════════════════════════════════
 
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
-#include <random>
 
 namespace {
-    // Session-level seed (generated once per browser session)
-    uint32_t g_tls_session_seed = 0;
-    
-    void InitializeTLSSeed() {
-        if (g_tls_session_seed == 0) {
-            // Generate from multiple entropy sources
-            std::random_device rd;
-            g_tls_session_seed = rd() ^ static_cast<uint32_t>(time(nullptr));
-        }
-    }
-    
-    // Get session-specific GREASE value
-    uint16_t GetSessionGreaseValue() {
-        InitializeTLSSeed();
-        // Real GREASE values from RFC 8701
-        const uint16_t grease_values[] = {
-            0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a,
-            0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
-            0x8a8a, 0x9a9a, 0xaaaa, 0xbaba,
-            0xcaca, 0xdada, 0xeaea, 0xfafa
-        };
-        return grease_values[g_tls_session_seed % 16];
-    }
+
+// Session-level seed (generated once per browser session)
+uint32_t g_tls_session_seed = 0;
+bool g_tls_seed_initialized = false;
+
+void InitializeTLSSeed() {
+  if (g_tls_seed_initialized) return;
+
+  // Let the jbium driver pin a specific seed for reproducibility, same
+  // pattern as STEALTH_CANVAS_SEED / STEALTH_WEBGL_SEED / STEALTH_AUDIO_SEED.
+  if (const char* env_seed = std::getenv("STEALTH_TLS_SEED")) {
+    g_tls_session_seed = static_cast<uint32_t>(std::strtoul(env_seed, nullptr, 10));
+  } else {
+    // std::random_device can block/be slow in sandboxed environments —
+    // time + this static's own address is entropy enough for GREASE
+    // selection, which isn't security-sensitive.
+    uint32_t time_seed = static_cast<uint32_t>(std::time(nullptr));
+    uint32_t addr_seed = reinterpret_cast<uintptr_t>(&g_tls_session_seed);
+    g_tls_session_seed = time_seed ^ (addr_seed << 16) ^ (addr_seed >> 16);
+  }
+  g_tls_seed_initialized = true;
+}
+
+// Get session-specific GREASE value (real values from RFC 8701)
+uint16_t GetSessionGreaseValue() {
+  InitializeTLSSeed();
+  const uint16_t grease_values[] = {
+      0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a,
+      0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
+      0x8a8a, 0x9a9a, 0xaaaa, 0xbaba,
+      0xcaca, 0xdada, 0xeaea, 0xfafa
+  };
+  return grease_values[g_tls_session_seed % 16];
+}
+
 }  // namespace
 
-// END STEALTH PATCH
+// END STEALTH PATCH: TLS Fingerprint Randomization
 """
 
-if STEALTH_MARKER in content:
-    print("⏭️  TLS patch already applied, skipping")
-else:
-    # Inject at the top of the namespace
-    content = f"{INJECTION}\n\n{content}"
+content = content[:insertion_point] + INJECTION + content[insertion_point:]
 
-    # Find where cipher suites are set and modify
-    old_config = """SSLConfig::SSLConfig() {"""
-    new_config = """SSLConfig::SSLConfig() {
+# Find where cipher suites are set and modify
+old_config = """SSLConfig::SSLConfig() {"""
+new_config = """SSLConfig::SSLConfig() {
   // STEALTH: Use session GREASE values
-  uint16_t grease = GetSessionGreaseValue();"""
+  [[maybe_unused]] uint16_t grease = GetSessionGreaseValue();"""
 
-    if old_config in content:
-        content = content.replace(old_config, new_config)
-        print("✅ TLS GREASE randomization patched")
+if old_config in content:
+    content = content.replace(old_config, new_config)
+    print("✅ TLS GREASE randomization patched")
 
 p.write_text(content)
 print("✅ TLS fingerprint patch applied")
