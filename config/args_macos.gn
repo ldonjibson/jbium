@@ -15,6 +15,11 @@ strip_debug_info = true
 optimize_for_size = true
 use_thin_lto = true
 
+# is_official_build defaults to PGO phase 2, which needs Google's prebuilt
+# profiling data downloaded via checkout_pgo_profiles + gclient runhooks.
+# Not worth it for a patched fork — disable PGO instead.
+chrome_pgo_phase = 0
+
 # Compiler
 is_clang = true
 use_lld = true
@@ -43,14 +48,19 @@ enable_web_bluetooth = true
 enable_webxr = true
 
 # ── REMOVE BLOAT ──
-safe_browsing_mode = 0
+# 0 breaks gn gen (chrome/test's build graph hard-depends on safe_browsing
+# subcomponents regardless of what ninja target you actually build).
+safe_browsing_mode = 1
 enable_signin = false
 enable_sync = false
 enable_google_now = false
 enable_voice_search = false
 enable_web_store = false
 enable_cloud_print = false
-enable_print_preview = false
+# Must stay true: chrome/test's build graph asserts on this even though
+# ninja is only asked to build the `chrome` target, so gn gen fails
+# outright if it's false. Not JS-detectable either way, so no stealth cost.
+enable_print_preview = true
 enable_media_router = false
 enable_remoting = false
 enable_update_flows = false
