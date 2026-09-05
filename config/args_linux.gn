@@ -1,0 +1,98 @@
+# ═══════════════════════════════════════════════════════════
+# Jbium — Linux Build Configuration
+# Build on: Ubuntu 22.04+ with Clang (see scripts/setup.sh)
+# ═══════════════════════════════════════════════════════════
+
+is_debug = false
+is_official_build = true
+is_component_build = false
+target_cpu = "x64"       # or "arm64"
+target_os = "linux"
+
+# Optimization
+symbol_level = 0
+strip_debug_info = true
+optimize_for_size = true
+use_thin_lto = true
+thin_lto_enable_optimizations = true
+is_cfi = true
+
+# Compiler
+is_clang = true
+use_lld = true
+
+# No Google branding
+is_chrome_branded = false
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+
+# ── FINGERPRINT CONSISTENCY ──
+enable_pdf = true
+enable_plugins = true
+enable_mime_type_detection = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+enable_webrtc = true
+rtc_use_h264 = true
+enable_media_stream = true
+enable_screen_capture = true
+enable_web_speech = true
+enable_speech_synthesis = true
+enable_service_worker = true
+enable_gamepad = true
+enable_web_midi = true
+enable_battery_status_api = true
+enable_web_bluetooth = true
+enable_webxr = true
+enable_navigator_stored_client_hints = true
+
+# ── REMOVE BLOAT ──
+safe_browsing_mode = 0
+enable_signin = false
+enable_browser_signin = false
+enable_one_click_signin = false
+enable_sync = false
+enable_google_now = false
+enable_voice_search = false
+enable_web_store = false
+enable_cloud_print = false
+enable_print_preview = false
+enable_basic_printing = false
+enable_media_router = false
+enable_dial_media_route_provider = false
+enable_remoting = false
+enable_update_flows = false
+use_crashpad = false
+enable_crash_reporting = false
+enable_metrics = false
+enable_metrics_reporting = false
+enable_policy = false
+enable_spellcheck = false
+enable_accessibility_ui = false
+enable_notification_ui = false
+enable_nacl = false
+enable_nacl_nonsfi = false
+enable_apps = false
+enable_app_list = false
+
+# ── LINUX-SPECIFIC ──
+use_udev = true
+use_alsa = true
+use_pulseaudio = false
+use_cairo = true
+use_glib = true
+use_gtk = true
+use_ozone = true
+ozone_platform_x11 = true
+use_system_minilibc = false
+
+# Resource trimming — keep ICU data for locales we support
+use_system_icu = false
+icu_use_data_file = true
+
+# DevTools protocol — kept for our driver (Patch 002 minimizes its visibility)
+enable_remote_debugging = true
+
+# Universal binary support: uncomment for arm64
+# target_cpu = "arm64"

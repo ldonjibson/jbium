@@ -1,0 +1,203 @@
+{
+  "$comment": "GeoIP locale mappings. Maps country codes to language, timezone, currency, date format, and common screen resolutions.",
+  "country_data": {
+    "US": {
+      "name": "United States",
+      "languages": ["en-US"],
+      "primary_language": "en-US",
+      "timezone": "America/New_York",
+      "timezones": ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+      "currency": "USD",
+      "currency_symbol": "$",
+      "date_format": "MM/DD/YYYY",
+      "number_format": "1,234.56",
+      "os_distribution": {"Windows": 0.58, "macOS": 0.27, "Linux": 0.06, "ChromeOS": 0.09},
+      "common_resolutions": [
+        {"w": 1920, "h": 1080, "freq": 0.35},
+        {"w": 1366, "h": 768, "freq": 0.15},
+        {"w": 1440, "h": 900, "freq": 0.12},
+        {"w": 2560, "h": 1440, "freq": 0.08}
+      ],
+      "geolocation": {
+        "center": {"lat": 39.8283, "lng": -98.5795},
+        "cities": [
+          {"name": "New York", "lat": 40.7128, "lng": -74.0060, "tz": "America/New_York"},
+          {"name": "Los Angeles", "lat": 34.0522, "lng": -118.2437, "tz": "America/Los_Angeles"},
+          {"name": "Chicago", "lat": 41.8781, "lng": -87.6298, "tz": "America/Chicago"},
+          {"name": "Houston", "lat": 29.7604, "lng": -95.3698, "tz": "America/Chicago"},
+          {"name": "Phoenix", "lat": 33.4484, "lng": -112.0740, "tz": "America/Phoenix"},
+          {"name": "Philadelphia", "lat": 39.9526, "lng": -75.1652, "tz": "America/New_York"},
+          {"name": "San Antonio", "lat": 29.4241, "lng": -98.4936, "tz": "America/Chicago"},
+          {"name": "San Diego", "lat": 32.7157, "lng": -117.1611, "tz": "America/Los_Angeles"},
+          {"name": "Dallas", "lat": 32.7767, "lng": -96.7970, "tz": "America/Chicago"},
+          {"name": "San Francisco", "lat": 37.7749, "lng": -122.4194, "tz": "America/Los_Angeles"}
+        ]
+      }
+    },
+    "GB": {
+      "name": "United Kingdom",
+      "languages": ["en-GB"],
+      "primary_language": "en-GB",
+      "timezone": "Europe/London",
+      "timezones": ["Europe/London"],
+      "currency": "GBP",
+      "currency_symbol": "£",
+      "date_format": "DD/MM/YYYY",
+      "number_format": "1,234.56",
+      "os_distribution": {"Windows": 0.65, "macOS": 0.22, "Linux": 0.07, "ChromeOS": 0.06},
+      "common_resolutions": [
+        {"w": 1920, "h": 1080, "freq": 0.40},
+        {"w": 1366, "h": 768, "freq": 0.20},
+        {"w": 1536, "h": 864, "freq": 0.10}
+      ],
+      "geolocation": {
+        "center": {"lat": 51.5074, "lng": -0.1278},
+        "cities": [
+          {"name": "London", "lat": 51.5074, "lng": -0.1278, "tz": "Europe/London"},
+          {"name": "Manchester", "lat": 53.4808, "lng": -2.2426, "tz": "Europe/London"},
+          {"name": "Birmingham", "lat": 52.4862, "lng": -1.8904, "tz": "Europe/London"},
+          {"name": "Leeds", "lat": 53.8008, "lng": -1.5491, "tz": "Europe/London"},
+          {"name": "Glasgow", "lat": 55.8642, "lng": -4.2518, "tz": "Europe/London"},
+          {"name": "Edinburgh", "lat": 55.9533, "lng": -3.1883, "tz": "Europe/London"}
+        ]
+      }
+    },
+    "DE": {
+      "name": "Germany",
+      "languages": ["de-DE"],
+      "primary_language": "de-DE",
+      "timezone": "Europe/Berlin",
+      "timezones": ["Europe/Berlin"],
+      "currency": "EUR",
+      "currency_symbol": "€",
+      "date_format": "DD.MM.YYYY",
+      "number_format": "1.234,56",
+      "os_distribution": {"Windows": 0.68, "macOS": 0.18, "Linux": 0.10, "ChromeOS": 0.04},
+      "common_resolutions": [
+        {"w": 1920, "h": 1080, "freq": 0.38},
+        {"w": 1366, "h": 768, "freq": 0.18},
+        {"w": 2560, "h": 1440, "freq": 0.10}
+      ],
+      "geolocation": {
+        "center": {"lat": 51.1657, "lng": 10.4515},
+        "cities": [
+          {"name": "Berlin", "lat": 52.5200, "lng": 13.4050, "tz": "Europe/Berlin"},
+          {"name": "Hamburg", "lat": 53.5511, "lng": 9.9937, "tz": "Europe/Berlin"},
+          {"name": "Munich", "lat": 48.1351, "lng": 11.5820, "tz": "Europe/Berlin"},
+          {"name": "Cologne", "lat": 50.9375, "lng": 6.9603, "tz": "Europe/Berlin"},
+          {"name": "Frankfurt", "lat": 50.1109, "lng": 8.6821, "tz": "Europe/Berlin"},
+          {"name": "Stuttgart", "lat": 48.7758, "lng": 9.1829, "tz": "Europe/Berlin"}
+        ]
+      }
+    },
+    "JP": {
+      "name": "Japan",
+      "languages": ["ja-JP"],
+      "primary_language": "ja-JP",
+      "timezone": "Asia/Tokyo",
+      "timezones": ["Asia/Tokyo"],
+      "currency": "JPY",
+      "currency_symbol": "¥",
+      "date_format": "YYYY/MM/DD",
+      "number_format": "1,234",
+      "os_distribution": {"Windows": 0.75, "macOS": 0.18, "Linux": 0.04, "ChromeOS": 0.03},
+      "common_resolutions": [
+        {"w": 1920, "h": 1080, "freq": 0.40},
+        {"w": 1366, "h": 768, "freq": 0.20},
+        {"w": 1280, "h": 720, "freq": 0.10}
+      ],
+      "geolocation": {
+        "center": {"lat": 35.6762, "lng": 139.6503},
+        "cities": [
+          {"name": "Tokyo", "lat": 35.6762, "lng": 139.6503, "tz": "Asia/Tokyo"},
+          {"name": "Osaka", "lat": 34.6937, "lng": 135.5023, "tz": "Asia/Tokyo"},
+          {"name": "Yokohama", "lat": 35.4437, "lng": 139.6380, "tz": "Asia/Tokyo"},
+          {"name": "Nagoya", "lat": 35.1815, "lng": 136.9066, "tz": "Asia/Tokyo"},
+          {"name": "Sapporo", "lat": 43.0618, "lng": 141.3545, "tz": "Asia/Tokyo"},
+          {"name": "Fukuoka", "lat": 33.5904, "lng": 130.4017, "tz": "Asia/Tokyo"}
+        ]
+      }
+    },
+    "KR": {
+      "name": "South Korea",
+      "languages": ["ko-KR"],
+      "primary_language": "ko-KR",
+      "timezone": "Asia/Seoul",
+      "timezones": ["Asia/Seoul"],
+      "currency": "KRW",
+      "currency_symbol": "₩",
+      "date_format": "YYYY.MM.DD",
+      "number_format": "1,234",
+      "os_distribution": {"Windows": 0.72, "macOS": 0.20, "Linux": 0.06, "ChromeOS": 0.02},
+      "common_resolutions": [
+        {"w": 1920, "h": 1080, "freq": 0.40},
+        {"w": 2560, "h": 1440, "freq": 0.15},
+        {"w": 1366, "h": 768, "freq": 0.15}
+      ],
+      "geolocation": {
+        "center": {"lat": 37.5665, "lng": 126.9780},
+        "cities": [
+          {"name": "Seoul", "lat": 37.5665, "lng": 126.9780, "tz": "Asia/Seoul"},
+          {"name": "Busan", "lat": 35.1796, "lng": 129.0756, "tz": "Asia/Seoul"},
+          {"name": "Incheon", "lat": 37.4563, "lng": 126.7052, "tz": "Asia/Seoul"},
+          {"name": "Daegu", "lat": 35.8714, "lng": 128.6014, "tz": "Asia/Seoul"},
+          {"name": "Daejeon", "lat": 36.3504, "lng": 127.3845, "tz": "Asia/Seoul"},
+          {"name": "Gwangju", "lat": 35.1595, "lng": 126.8526, "tz": "Asia/Seoul"}
+        ]
+      }
+    },
+    "FR": {
+      "name": "France",
+      "languages": ["fr-FR"],
+      "primary_language": "fr-FR",
+      "timezone": "Europe/Paris",
+      "timezones": ["Europe/Paris"],
+      "currency": "EUR",
+      "currency_symbol": "€",
+      "date_format": "DD/MM/YYYY",
+      "number_format": "1 234,56",
+      "os_distribution": {"Windows": 0.70, "macOS": 0.20, "Linux": 0.06, "ChromeOS": 0.04},
+      "common_resolutions": [
+        {"w": 1920, "h": 1080, "freq": 0.38},
+        {"w": 1366, "h": 768, "freq": 0.18},
+        {"w": 1440, "h": 900, "freq": 0.12}
+      ],
+      "geolocation": {
+        "center": {"lat": 46.2276, "lng": 2.2137},
+        "cities": [
+          {"name": "Paris", "lat": 48.8566, "lng": 2.3522, "tz": "Europe/Paris"},
+          {"name": "Marseille", "lat": 43.2965, "lng": 5.3698, "tz": "Europe/Paris"},
+          {"name": "Lyon", "lat": 45.7640, "lng": 4.8357, "tz": "Europe/Paris"},
+          {"name": "Toulouse", "lat": 43.6047, "lng": 1.4442, "tz": "Europe/Paris"},
+          {"name": "Nice", "lat": 43.7102, "lng": 7.2620, "tz": "Europe/Paris"},
+          {"name": "Nantes", "lat": 47.2184, "lng": -1.5536, "tz": "Europe/Paris"}
+        ]
+      }
+    }
+  },
+  "language_fallbacks": {
+    "$comment": "navigator.languages array for each primary language",
+    "en-US": ["en-US", "en", "fr-FR", "es-ES"],
+    "en-GB": ["en-GB", "en", "fr-FR", "de-DE"],
+    "de-DE": ["de-DE", "de", "en-US", "en"],
+    "fr-FR": ["fr-FR", "fr", "en-US", "en"],
+    "ja-JP": ["ja-JP", "ja", "en-US", "en"],
+    "ko-KR": ["ko-KR", "ko", "en-US", "en"],
+    "es-ES": ["es-ES", "es", "en-US", "en"],
+    "pt-BR": ["pt-BR", "pt", "en-US", "en"],
+    "it-IT": ["it-IT", "it", "en-US", "en"],
+    "ru-RU": ["ru-RU", "ru", "en-US", "en"]
+  },
+  "accept_language_templates": {
+    "en-US": "en-US,en;q=0.9",
+    "en-GB": "en-GB,en;q=0.9,en-US;q=0.8",
+    "de-DE": "de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7",
+    "fr-FR": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "ja-JP": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+    "ko-KR": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "es-ES": "es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7",
+    "pt-BR": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "it-IT": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+    "ru-RU": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+  }
+}

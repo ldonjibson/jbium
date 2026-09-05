@@ -1,0 +1,191 @@
+name: Build Jbium
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build \
+            clang lld llvm \
+            python3 python3-pip \
+            git curl wget
+          # Install all Chromium deps
+          sudo apt-get install -y \
+            libasound2-dev libatk1.0-dev \
+            libatk-bridge2.0-dev libatspi2.0-dev \
+            libcairo2-dev libcups2-dev \
+            libdrm-dev libgbm-dev \
+            libglib2.0-dev libgtk-3-dev \
+            libnss3-dev libpango1.0-dev
+          
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git /opt/depot_tools
+          echo "/opt/depot_tools" >> $GITHUB_PATH
+      
+      - name: Fetch Chromium
+        run: |
+          mkdir -p ~/jbium/chromium && cd ~/jbium/chromium
+          fetch --no-history --nohooks chromium
+          cd src
+          gclient runhooks
+      
+      - name: Apply patches
+        run: |
+          cd ~/jbium/chromium/src
+          bash patches/apply_all.sh
+      
+      - name: Build
+        run: |
+          cd ~/jbium/chromium/src
+          mkdir -p out/Release
+          cp config/args_linux.gn out/Release/args.gn
+          gn gen out/Release
+          ninja -C out/Release chrome -j$(nproc)
+          mv out/Release/chrome out/Release/jbium
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            out/Release/jbium
+            out/Release/*.pak
+            out/Release/*.bin
+            out/Release/icudtl.dat
+            out/Release/*.so
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup build environment
+        shell: cmd
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git C:\depot_tools
+          set PATH=C:\depot_tools;%PATH%
+          set DEPOT_TOOLS_WIN_TOOLCHAIN=0
+      
+      - name: Fetch Chromium
+        shell: cmd
+        run: |
+          mkdir C:\jbium\chromium && cd C:\jbium\chromium
+          call fetch --no-history --nohooks chromium
+          cd src
+          call gclient runhooks
+      
+      - name: Apply patches
+        shell: cmd
+        run: |
+          cd C:\jbium\chromium\src
+          for /d %%d in (patches\0*) do call %%d\apply.bat
+      
+      - name: Build
+        shell: cmd
+        run: |
+          cd C:\jbium\chromium\src
+          mkdir out\Release 2>nul
+          copy config\args_windows.gn out\Release\args.gn
+          call gn gen out\Release
+          call ninja -C out\Release chrome -j %NUMBER_OF_PROCESSORS%
+          move /y out\Release\chrome.exe out\Release\jbium.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            out/Release/jbium.exe
+            out/Release/*.pak
+            out/Release/*.dll
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup build environment
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ~/depot_tools
+          echo "~/depot_tools" >> $GITHUB_PATH
+      
+      - name: Fetch Chromium
+        run: |
+          mkdir -p ~/jbium/chromium && cd ~/jbium/chromium
+          fetch --no-history --nohooks chromium
+          cd src
+          gclient runhooks
+      
+      - name: Apply patches
+        run: |
+          cd ~/jbium/chromium/src
+          bash patches/apply_all.sh
+      
+      - name: Build
+        run: |
+          cd ~/jbium/chromium/src
+          mkdir -p out/Release
+          cp config/args_macos.gn out/Release/args.gn
+          gn gen out/Release
+          ninja -C out/Release chrome -j$(sysctl -n hw.ncpu)
+          mv out/Release/chrome out/Release/jbium
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: |
+            out/Release/jbium
+            out/Release/*.pak
+            out/Release/*.dylib
+
+  package:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: builds/
+      
+      - name: Create packages
+        run: |
+          python scripts/package_all.py --output dist/
+      
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: jbium-packages
+          path: dist/
+
+  release:
+    needs: [package]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: jbium-packages
+          path: dist/
+      
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

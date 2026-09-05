@@ -1,0 +1,119 @@
+{
+  "$comment": "Fonts bundled for Windows platform spoofing. These fonts render with the exact same metrics as their Windows counterparts.",
+  "platform": "windows",
+  "font_size_mb": 18,
+  "fonts": {
+    "liberation_sans": {
+      "files": [
+        "LiberationSans-Regular.ttf",
+        "LiberationSans-Bold.ttf",
+        "LiberationSans-Italic.ttf",
+        "LiberationSans-BoldItalic.ttf"
+      ],
+      "substitutes_for": ["Arial", "Arial Narrow"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1",
+      "source": "https://github.com/liberationfonts/liberation-fonts",
+      "rendering_note": "Identical advance width, x-height, cap-height, and baseline metrics to Arial"
+    },
+    "liberation_serif": {
+      "files": [
+        "LiberationSerif-Regular.ttf",
+        "LiberationSerif-Bold.ttf"
+      ],
+      "substitutes_for": ["Times New Roman"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1",
+      "source": "https://github.com/liberationfonts/liberation-fonts"
+    },
+    "liberation_mono": {
+      "files": [
+        "LiberationMono-Regular.ttf",
+        "LiberationMono-Bold.ttf"
+      ],
+      "substitutes_for": ["Courier New"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1"
+    },
+    "carlito": {
+      "files": [
+        "Carlito-Regular.ttf",
+        "Carlito-Bold.ttf",
+        "Carlito-Italic.ttf",
+        "Carlito-BoldItalic.ttf"
+      ],
+      "substitutes_for": ["Calibri"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1",
+      "source": "https://github.com/googlefonts/carlito",
+      "rendering_note": "Identical metrics to Calibri — text measurement matches exactly"
+    },
+    "caladea": {
+      "files": [
+        "Caladea-Regular.ttf",
+        "Caladea-Bold.ttf"
+      ],
+      "substitutes_for": ["Cambria"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1"
+    },
+    "noto_sans": {
+      "files": [
+        "NotoSans-Regular.ttf",
+        "NotoSans-Bold.ttf",
+        "NotoSans-Italic.ttf"
+      ],
+      "substitutes_for": ["Segoe UI", "Verdana", "Tahoma"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "source": "https://fonts.google.com/noto",
+      "rendering_note": "Not metric-compatible but similar proportions to Segoe UI"
+    },
+    "noto_sans_jp": {
+      "files": ["NotoSansJP-Regular.ttf", "NotoSansJP-Bold.ttf"],
+      "substitutes_for": ["Yu Gothic", "MS Gothic", "Meiryo"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["JP"]
+    },
+    "noto_sans_kr": {
+      "files": ["NotoSansKR-Regular.ttf", "NotoSansKR-Bold.ttf"],
+      "substitutes_for": ["Malgun Gothic", "Nanum Gothic"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["KR"]
+    },
+    "noto_sans_sc": {
+      "files": ["NotoSansSC-Regular.ttf", "NotoSansSC-Bold.ttf"],
+      "substitutes_for": ["Microsoft YaHei", "SimHei"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["CN"]
+    },
+    "noto_sans_tc": {
+      "files": ["NotoSansTC-Regular.ttf"],
+      "substitutes_for": ["Microsoft JhengHei"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["TW", "HK"]
+    },
+    "noto_sans_arabic": {
+      "files": ["NotoSansArabic-Regular.ttf"],
+      "substitutes_for": ["Segoe UI Arabic"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["SA", "AE", "EG", "QA", "KW", "JO"]
+    },
+    "gelasio": {
+      "files": ["Gelasio-Regular.ttf", "Gelasio-Bold.ttf"],
+      "substitutes_for": ["Georgia"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1"
+    }
+  }
+}

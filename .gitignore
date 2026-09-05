@@ -1,0 +1,147 @@
+
+### 2. .gitignore
+
+```gitignore
+# ═══════════════════════════════════════════
+# Jbium — Git Ignore
+# ═══════════════════════════════════════════
+
+# ── Chromium source (too large, download separately) ──
+chromium/
+src/
+out/
+third_party/
+
+# ── Build outputs ──
+builds/
+dist/
+packages/
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+*.exe
+*.dmg
+*.app
+
+# ── Binary files ──
+*.so
+*.dll
+*.dylib
+*.o
+*.a
+*.lib
+*.bin
+*.pak
+*.dat
+*.dat
+chrome
+chrome.exe
+jbium
+jbium.exe
+
+# ── Font files (downloaded by script) ──
+fonts/windows/*.ttf
+fonts/windows/*.otf
+fonts/macos/*.ttf
+fonts/macos/*.otf
+fonts/linux/*.ttf
+fonts/linux/*.otf
+fonts/.downloads/
+fonts/.cache/
+
+# ── GeoIP data (downloaded separately) ──
+data/geoip/*.mmdb
+data/geoip/*.dat
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ── Virtual environments ──
+venv/
+.venv/
+ENV/
+env/
+.ENV
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-*
+.idea/
+
+# ── OS ──
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Logs ──
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Test results ──
+test_results/
+screenshots/
+*.png
+!docs/images/*.png
+
+# ── Coverage ──
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# ── Secrets / Environment ──
+.env
+.env.*
+*.pem
+*.key
+*.cert
+aws_credentials
+credentials.json
+
+# ── Node (if any tooling uses it) ──
+node_modules/
+.npm
+.yarn/
+
+# ── Temporary ──
+tmp/
+temp/
+.cache/
+.stealth-*
+*.tmp
+*.bak
+*.orig
+
+# ── Vast.ai instance state ──
+vast_state.json
+instance_id.txt

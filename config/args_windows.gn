@@ -1,0 +1,91 @@
+# ═══════════════════════════════════════════════════════════
+# Jbium — Windows Build Configuration
+# Build on: Windows 10/11 with Visual Studio 2022
+# ═══════════════════════════════════════════════════════════
+
+is_debug = false
+is_official_build = true
+is_component_build = false
+target_cpu = "x64"
+target_os = "win"
+
+# Optimization
+symbol_level = 0
+strip_debug_info = true
+optimize_for_size = true
+use_thin_lto = true
+
+# Compiler
+is_clang = true
+use_lld = true
+
+# No Google branding
+is_chrome_branded = false
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+
+# ── FINGERPRINT CONSISTENCY ──
+enable_pdf = true
+enable_plugins = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+enable_webrtc = true
+rtc_use_h264 = true
+enable_media_stream = true
+enable_web_speech = true
+enable_speech_synthesis = true
+enable_service_worker = true
+enable_gamepad = true
+enable_web_midi = true
+enable_battery_status_api = true
+enable_web_bluetooth = true
+enable_webxr = true
+
+# ── REMOVE BLOAT ──
+safe_browsing_mode = 0
+enable_signin = false
+enable_sync = false
+enable_google_now = false
+enable_voice_search = false
+enable_web_store = false
+enable_cloud_print = false
+enable_print_preview = false
+enable_media_router = false
+enable_remoting = false
+enable_update_flows = false
+use_crashpad = false
+enable_metrics = false
+enable_policy = false
+enable_spellcheck = false
+enable_nacl = false
+enable_apps = false
+
+# ── WINDOWS-SPECIFIC ──
+# Use system fonts via DirectWrite
+use_system_libdrm = false
+use_udev = false
+use_alsa = false
+use_pulseaudio = false
+use_cairo = false
+use_glib = false
+use_gtk = false
+use_ozone = false
+
+# Windows-specific media
+enable_platform_hevc_decoder_support = true
+enable_windows_media_foundation = true
+
+# Windows font rendering (DirectWrite)
+enable_direct_write = true
+
+# D3D for rendering
+enable_gpu_rasterization = true
+use_dawn = true
+
+# Windows crash handling (keep minimal)
+use_crashpad = false
+
+# Linker optimization for Windows
+use_lld = true
+use_thin_lto = true

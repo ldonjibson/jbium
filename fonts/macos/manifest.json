@@ -1,0 +1,74 @@
+{
+  "$comment": "Fonts bundled for macOS platform spoofing. macOS uses San Francisco (SF Pro) as system font, with Helvetica as classic fallback.",
+  "platform": "macos",
+  "font_size_mb": 14,
+  "fonts": {
+    "noto_sans": {
+      "files": [
+        "NotoSans-Regular.ttf",
+        "NotoSans-Bold.ttf",
+        "NotoSans-Italic.ttf",
+        "NotoSans-Medium.ttf",
+        "NotoSans-Light.ttf"
+      ],
+      "substitutes_for": ["SF Pro Text", "SF Pro Display", "Helvetica Neue"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "rendering_note": "Closest available to SF Pro. Similar humanist sans-serif proportions."
+    },
+    "liberation_sans": {
+      "files": [
+        "LiberationSans-Regular.ttf",
+        "LiberationSans-Bold.ttf",
+        "LiberationSans-Italic.ttf"
+      ],
+      "substitutes_for": ["Helvetica", "Helvetica Neue"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "rendering_note": "Helvetica and Arial share metrics; Liberation Sans matches both"
+    },
+    "noto_serif": {
+      "files": ["NotoSerif-Regular.ttf", "NotoSerif-Bold.ttf"],
+      "substitutes_for": ["Times", "Georgia", "Baskerville"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1"
+    },
+    "dejavu_mono": {
+      "files": ["DejaVuSansMono.ttf"],
+      "substitutes_for": ["Menlo", "Monaco"],
+      "metric_compatible": false,
+      "license": "Bitstream Vera License",
+      "rendering_note": "Menlo is based on DejaVu Sans Mono, so metrics are very close"
+    },
+    "eb_garamond": {
+      "files": ["EBGaramond-Regular.ttf"],
+      "substitutes_for": ["Garamond", "Hoefler Text"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1"
+    },
+    "noto_sans_jp": {
+      "files": ["NotoSansJP-Regular.ttf", "NotoSansJP-Bold.ttf"],
+      "substitutes_for": ["Hiragino Sans", "Hiragino Kaku Gothic ProN"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["JP"]
+    },
+    "noto_sans_kr": {
+      "files": ["NotoSansKR-Regular.ttf"],
+      "substitutes_for": ["Apple SD Gothic Neo"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["KR"]
+    },
+    "noto_sans_sc": {
+      "files": ["NotoSansSC-Regular.ttf"],
+      "substitutes_for": ["PingFang SC"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "regional": true,
+      "regions": ["CN"]
+    }
+  }
+}

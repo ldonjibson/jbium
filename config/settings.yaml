@@ -1,0 +1,109 @@
+# ═══════════════════════════════════════════════════════════
+# Jbium — Global Settings
+# ═══════════════════════════════════════════════════════════
+
+# Browser binary
+browser:
+  binary_path: "/root/jbium/chromium/src/out/Release/jbium"
+  user_data_dir: "/tmp/stealth-profile"
+  headless: false
+  window_size: "--start-maximized"
+  extra_args:
+    - "--no-first-run"
+    - "--no-default-browser-check"
+    - "--disable-background-timer-throttling"
+    - "--disable-backgrounding-occluded-windows"
+    - "--disable-renderer-backgrounding"
+    - "--disable-background-networking"
+    - "--disable-client-side-phishing-detection"
+    - "--disable-default-apps"
+    - "--disable-extensions"
+    - "--disable-features=site-per-process,Translate"
+    - "--disable-hang-monitor"
+    - "--disable-popup-blocking"
+    - "--disable-prompt-on-repost"
+    - "--disable-sync"
+    - "--metrics-recording-only"
+    - "--no-pings"
+    - "--password-store=basic"
+    - "--use-mock-keychain"
+
+# Proxy
+proxy:
+  # Webshare configuration
+  # Set real values via STEALTH_WEBSHARE_USERNAME / STEALTH_WEBSHARE_PASSWORD
+  # env vars — never commit real credentials to this file.
+  provider: "webshare"
+  endpoint: "p.webshare.io"
+  port: 80
+  username_prefix: ""
+  password: ""
+  rotation_mode: "numbered"  # "numbered" (1-100) or "rotating"
+  min_requests_per_ip: 3
+  max_requests_per_ip: 50
+  request_delay_seconds: 2.0
+  retry_on_407: true
+  retry_max: 3
+
+# Fingerprint
+fingerprint:
+  # When true, generates a new fingerprint for each session
+  per_session: true
+  # When true, matches device profile to GeoIP OS distribution
+  match_geoip: true
+  # Canvas/WebGL noise (0.0 = off, 1.0 = aggressive)
+  noise_level: 0.5
+  # GPU profile override (index into config/fingerprints.json)
+  # Set to null for automatic selection
+  gpu_profile_override: null
+
+# GeoIP
+geoip:
+  enabled: true
+  database_path: "./data/GeoLite2-City.mmdb"
+  # Fallback if GeoIP fails
+  fallback_country: "US"
+  fallback_timezone: "America/New_York"
+  fallback_language: "en-US"
+
+# Anti-detection
+anti_detection:
+  # WebRTC IP leak prevention
+  filter_webrtc: true
+  # Battery API spoofing
+  spoof_battery: true
+  # Canvas noise
+  canvas_noise: true
+  # WebGL spoofing
+  webgl_spoof: true
+  # Font filtering
+  font_filter: true
+  # Plugin consistency
+  plugin_consistency: true
+  # Navigator spoofing
+  navigator_spoof: true
+  # User-Agent Client Hints
+  ua_client_hints: true
+
+# Testing
+testing:
+  detection_sites:
+    - "https://bot.sannysoft.com/"
+    - "https://arh.antoinevastel.com/bots/areyouheadless"
+    - "https://fingerprintjs.github.io/fingerprintjs/"
+    - "https://browserleaks.com/javascript"
+    - "https://browserleaks.com/canvas"
+    - "https://browserleaks.com/webgl"
+    - "https://browserleaks.com/fonts"
+    - "https://tls.peet.ws/"
+    - "https://ja3er.com/"
+  timeout: 30
+  screenshot_dir: "./test_results/screenshots"
+  log_file: "./test_results/results.json"
+
+# S3
+s3:
+  enabled: false
+  bucket: ""
+  prefix: "jbium"
+  region: "us-east-1"

@@ -1,0 +1,88 @@
+# ═══════════════════════════════════════════════════════════
+# Jbium — macOS Build Configuration
+# Build on: macOS 13+ with Xcode 15+
+# ═══════════════════════════════════════════════════════════
+
+is_debug = false
+is_official_build = true
+is_component_build = false
+target_cpu = "x64"       # or "arm64" for Apple Silicon
+target_os = "mac"
+
+# Optimization
+symbol_level = 0
+strip_debug_info = true
+optimize_for_size = true
+use_thin_lto = true
+
+# Compiler
+is_clang = true
+use_lld = true
+
+# No Google branding
+is_chrome_branded = false
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+
+# ── FINGERPRINT CONSISTENCY ──
+enable_pdf = true
+enable_plugins = true
+proprietary_codecs = true
+ffmpeg_branding = "Chrome"
+enable_webrtc = true
+rtc_use_h264 = true
+enable_media_stream = true
+enable_web_speech = true
+enable_speech_synthesis = true
+enable_service_worker = true
+enable_gamepad = true
+enable_web_midi = true
+enable_battery_status_api = true
+enable_web_bluetooth = true
+enable_webxr = true
+
+# ── REMOVE BLOAT ──
+safe_browsing_mode = 0
+enable_signin = false
+enable_sync = false
+enable_google_now = false
+enable_voice_search = false
+enable_web_store = false
+enable_cloud_print = false
+enable_print_preview = false
+enable_media_router = false
+enable_remoting = false
+enable_update_flows = false
+use_crashpad = false
+enable_metrics = false
+enable_policy = false
+enable_spellcheck = false
+enable_nacl = false
+enable_apps = false
+
+# ── MACOS-SPECIFIC ──
+# Core Text for font rendering
+use_core_text = true
+
+# Metal for GPU rendering
+use_metal = true
+use_skia_metal = true
+
+# macOS notification center (keep API but remove UI)
+enable_notification_ui = false
+
+# macOS-specific media
+enable_platform_hevc_decoder_support = true
+enable_core_media = true
+
+# App bundle
+macos_deployment_target = "12.0"
+mac_sdk_min = "13.0"
+
+# Universal binary (x64 + arm64)
+# Uncomment for universal binary:
+# target_cpu = "all"
+
+# Code signing (leave blank for unsigned build)
+# chrome_signing_identity = ""
