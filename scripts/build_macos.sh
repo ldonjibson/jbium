@@ -73,16 +73,28 @@ gclient runhooks
 ok "Hooks complete"
 
 # ── Step 4: Apply patches ──
-log "Step 4/6: Applying stealth patches..."
+# Patches aren't reliably idempotent (some match on a substring that's
+# still present after being applied once), so re-running this on an
+# already-patched checkout can corrupt files instead of being a no-op.
+# Skip unless the checkout is fresh or the caller explicitly forces it.
+PATCH_MARKER="$CHROMIUM_DIR/src/.jbium_patches_applied"
 
-for patch_dir in "$PATCHES_DIR"/0*/; do
-    if [ -f "$patch_dir/apply.sh" ]; then
-        log "  Applying: $(basename $patch_dir)"
-        bash "$patch_dir/apply.sh"
-    fi
-done
+if [ -f "$PATCH_MARKER" ] && [ "${FORCE_PATCH:-0}" != "1" ]; then
+    log "Step 4/6: Patches already applied (found $PATCH_MARKER) — skipping."
+    log "  Re-apply with: FORCE_PATCH=1 bash $0"
+else
+    log "Step 4/6: Applying stealth patches..."
 
-ok "Patches applied"
+    for patch_dir in "$PATCHES_DIR"/0*/; do
+        if [ -f "$patch_dir/apply.sh" ]; then
+            log "  Applying: $(basename "$patch_dir")"
+            bash "$patch_dir/apply.sh"
+        fi
+    done
+
+    date > "$PATCH_MARKER"
+    ok "Patches applied"
+fi
 
 # ── Step 5: Configure build ──
 log "Step 5/6: Configuring build..."
