@@ -356,16 +356,21 @@ if date_path.exists():
         content = content[:line_end + 1] + include + "\n" + content[line_end + 1:]
     
     old_lang = "String NavigatorLanguage::language() const"
-    new_lang = """String NavigatorLanguage::language() const {
+
+    if old_lang in content:
+        # Insert right after the function's OWN opening brace instead of
+        # reconstructing/replacing the signature — this way the original
+        # signature and body are never touched, only whatever text
+        # actually sits there.
+        sig_start = content.index(old_lang)
+        brace_pos = content.index("{", sig_start)
+        injected = """
   // STEALTH PATCH: Return GeoIP-consistent language
   if (stealth::GeoIPHandler::IsInitialized()) {
     return String(stealth::GeoIPHandler::GetLanguage().c_str());
   }
-  // Original code below
 """
-    
-    if old_lang in content:
-        content = content.replace(old_lang, new_lang)
+        content = content[:brace_pos + 1] + injected + content[brace_pos + 1:]
         print("✅ navigator.language patched")
     
     date_path.write_text(content)
@@ -393,16 +398,18 @@ if intl_path.exists():
     # This affects Intl.DateTimeFormat().resolvedOptions().timeZone
     old_tz = "GetDefaultTimeZone"
     if old_tz in content:
-        content = content.replace(
-            old_tz,
-            f"""GetDefaultTimeZone {{
+        # Only the FIRST occurrence (the definition) — the old code used
+        # .replace() which rewrites every call site too, since this is a
+        # bare identifier with no signature context to disambiguate it.
+        sig_start = content.index(old_tz)
+        brace_pos = content.index("{", sig_start)
+        injected = """
   // STEALTH PATCH: Return GeoIP timezone
-  if (stealth::GeoIPHandler::IsInitialized()) {{
+  if (stealth::GeoIPHandler::IsInitialized()) {
     return stealth::GeoIPHandler::GetTimezone();
-  }}
-  // Original:
-  GetDefaultTimeZone_original"""
-        )
+  }
+"""
+        content = content[:brace_pos + 1] + injected + content[brace_pos + 1:]
         print("✅ Intl timezone patched")
     
     intl_path.write_text(content)
@@ -427,16 +434,15 @@ if v8_date_path.exists():
     
     old_offset = "double Date::TimezoneOffset"
     if old_offset in content:
-        content = content.replace(
-            old_offset,
-            f"""double Date::TimezoneOffset {{
+        sig_start = content.index(old_offset)
+        brace_pos = content.index("{", sig_start)
+        injected = """
   // STEALTH PATCH: Return GeoIP timezone offset
-  if (stealth::GeoIPHandler::IsInitialized()) {{
+  if (stealth::GeoIPHandler::IsInitialized()) {
     return static_cast<double>(stealth::GeoIPHandler::GetTimezoneOffsetMinutes());
-  }}
-  // Original:
-  double Date::TimezoneOffset_original"""
-        )
+  }
+"""
+        content = content[:brace_pos + 1] + injected + content[brace_pos + 1:]
         print("✅ Date.getTimezoneOffset() patched")
     
     v8_date_path.write_text(content)
@@ -462,11 +468,11 @@ if geolocation_path.exists():
     # Patch getCurrentPosition to return GeoIP coords
     old_pos = "void Geolocation::getCurrentPosition"
     if old_pos in content:
-        content = content.replace(
-            old_pos,
-            f"""void Geolocation::getCurrentPosition {{
+        sig_start = content.index(old_pos)
+        brace_pos = content.index("{", sig_start)
+        injected = """
   // STEALTH PATCH: Return GeoIP-consistent position
-  if (stealth::GeoIPHandler::IsInitialized()) {{
+  if (stealth::GeoIPHandler::IsInitialized()) {
     // Create position from GeoIP data + jitter
     auto position = blink::MakeGarbageCollected<Geoposition>();
     position->SetCoords(
@@ -475,14 +481,13 @@ if geolocation_path.exists():
       100.0  // accuracy in meters
     );
     // Success callback
-    if (success_callback) {{
+    if (success_callback) {
       success_callback->handleEvent(position);
-    }}
+    }
     return;
-  }}
-  // Original code below
+  }
 """
-        )
+        content = content[:brace_pos + 1] + injected + content[brace_pos + 1:]
         print("✅ navigator.geolocation patched")
     
     geolocation_path.write_text(content)
@@ -506,19 +511,18 @@ if http_util_path.exists():
     
     old_header = "std::string HttpUtil::GenerateAcceptLanguageHeader"
     if old_header in content:
-        content = content.replace(
-            old_header,
-            f"""std::string HttpUtil::GenerateAcceptLanguageHeader {{
+        sig_start = content.index(old_header)
+        brace_pos = content.index("{", sig_start)
+        injected = """
   // STEALTH PATCH: Use GeoIP language for header
-  if (stealth::GeoIPHandler::IsInitialized()) {{
+  if (stealth::GeoIPHandler::IsInitialized()) {
     auto lang = stealth::GeoIPHandler::GetLanguage();
     // Build header like "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7"
     std::string base = lang.substr(0, 2);  // "ja" from "ja-JP"
     return lang + "," + base + ";q=0.9,en-US;q=0.8,en;q=0.7";
-  }}
-  // Original code below
+  }
 """
-        )
+        content = content[:brace_pos + 1] + injected + content[brace_pos + 1:]
         print("✅ Accept-Language header patched")
     
     http_util_path.write_text(content)
