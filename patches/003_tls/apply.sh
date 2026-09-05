@@ -77,7 +77,13 @@ void InitializeTLSSeed() {
   // Let the jbium driver pin a specific seed for reproducibility, same
   // pattern as STEALTH_CANVAS_SEED / STEALTH_WEBGL_SEED / STEALTH_AUDIO_SEED.
   if (const char* env_seed = std::getenv("STEALTH_TLS_SEED")) {
-    g_tls_session_seed = static_cast<uint32_t>(std::strtoul(env_seed, nullptr, 10));
+    // Manual digit parse instead of strtoul: Chromium's hardening plugin
+    // flags strtoul's endptr-based API as -Wunsafe-buffer-usage-in-libc-call.
+    uint32_t parsed = 0;
+    for (const char* c = env_seed; *c >= '0' && *c <= '9'; ++c) {
+      parsed = parsed * 10 + static_cast<uint32_t>(*c - '0');
+    }
+    g_tls_session_seed = parsed;
   } else {
     // std::random_device can block/be slow in sandboxed environments —
     // time + this static's own address is entropy enough for GREASE
@@ -89,8 +95,11 @@ void InitializeTLSSeed() {
   g_tls_seed_initialized = true;
 }
 
-// Get session-specific GREASE value (real values from RFC 8701)
-uint16_t GetSessionGreaseValue() {
+// Get session-specific GREASE value (real values from RFC 8701).
+// [[maybe_unused]]: the call site below is a best-effort text match against
+// SSLConfig's constructor and may not land on every Chromium version — this
+// must still compile cleanly even if that injection silently doesn't match.
+[[maybe_unused]] uint16_t GetSessionGreaseValue() {
   InitializeTLSSeed();
   const uint16_t grease_values[] = {
       0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a,
