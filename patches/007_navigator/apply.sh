@@ -243,7 +243,89 @@ print("✅ Navigator spoof: stealth_navigator.h")
 print("✅ Navigator spoof: stealth_navigator.cc")
 
 # ─────────────────────────────────────────────
-# 2. Patch navigator hardwareConcurrency
+# Helpers: brace-aware source patching
+#
+# Naive str.replace() on a function *signature* leaves the original
+# body dangling under a renamed, non-member "_original" signature
+# (invalid C++, and -Wunreachable-code-aggressive/-Werror rejects
+# dead code besides). These helpers instead find the real matching
+# brace so we can either replace a whole function body cleanly, or
+# inject a statement right after the body actually opens (even when
+# the signature spans multiple lines, e.g. a multi-arg method).
+# ─────────────────────────────────────────────
+
+def _find_body_open_brace(content, marker):
+    """Return the index of the '{' that opens the function body whose
+    signature contains `marker`, skipping any '(' / ')' from the
+    parameter list first so multi-line signatures work."""
+    idx = content.find(marker)
+    if idx == -1:
+        return -1
+    paren_idx = content.find("(", idx)
+    if paren_idx == -1:
+        return -1
+    depth = 0
+    i = paren_idx
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                i += 1
+                break
+        i += 1
+    while i < n and content[i] != "{":
+        i += 1
+    return i if i < n else -1
+
+
+def replace_function_body(content, marker, new_body):
+    """Replace the entire body of the function identified by `marker`
+    with `new_body`, discarding the original body via brace matching."""
+    brace_idx = _find_body_open_brace(content, marker)
+    if brace_idx == -1:
+        return content, False
+    depth = 0
+    i = brace_idx
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                i += 1
+                break
+        i += 1
+    new_content = content[:brace_idx] + "{\n" + new_body + "\n}" + content[i:]
+    return new_content, True
+
+
+def insert_after_body_open(content, marker, insertion):
+    """Insert `insertion` immediately after the function body's opening
+    brace, leaving the rest of the original body intact."""
+    brace_idx = _find_body_open_brace(content, marker)
+    if brace_idx == -1:
+        return content, False
+    new_content = content[:brace_idx + 1] + insertion + content[brace_idx + 1:]
+    return new_content, True
+
+
+def add_stealth_include(content):
+    include = '#include "third_party/blink/renderer/platform/stealth/stealth_navigator.h"'
+    if include in content:
+        return content
+    last_include = content.rfind("#include")
+    line_end = content.find("\n", last_include)
+    return content[:line_end + 1] + include + "\n" + content[line_end + 1:]
+
+
+# ─────────────────────────────────────────────
+# 2. Patch navigator platform
 # ─────────────────────────────────────────────
 
 nav_id_path = Path(
@@ -252,56 +334,61 @@ nav_id_path = Path(
 
 if nav_id_path.exists():
     content = nav_id_path.read_text()
-    
-    include = '#include "third_party/blink/renderer/platform/stealth/stealth_navigator.h"'
-    if include not in content:
-        last_include = content.rfind("#include")
-        line_end = content.find("\n", last_include)
-        content = content[:line_end + 1] + include + "\n" + content[line_end + 1:]
-    
-    # Patch hardwareConcurrency
-    old_hc = "unsigned NavigatorConcurrentHardware::hardwareConcurrency() const"
-    new_hc = """unsigned NavigatorConcurrentHardware::hardwareConcurrency() const {
-  // STEALTH PATCH: Return spoofed core count
-  return static_cast<unsigned>(stealth::NavigatorSpoof::GetHardwareConcurrency());
-}
+    content = add_stealth_include(content)
 
-// Original (disabled):
-unsigned NavigatorConcurrentHardware_original() const"""
-    
-    if old_hc in content:
-        content = content.replace(old_hc, new_hc)
-        print("✅ hardwareConcurrency patched")
-    
-    # Patch deviceMemory
-    old_dm = "float NavigatorDeviceMemory::deviceMemory() const"
-    new_dm = """float NavigatorDeviceMemory::deviceMemory() const {
-  // STEALTH PATCH: Return spoofed memory
-  return static_cast<float>(stealth::NavigatorSpoof::GetDeviceMemory());
-}
-
-// Original (disabled):
-float NavigatorDeviceMemory_original() const"""
-    
-    if old_dm in content:
-        content = content.replace(old_dm, new_dm)
-        print("✅ deviceMemory patched")
-    
-    # Patch platform  
-    old_plat = "String NavigatorID::platform() const"
-    new_plat = """String NavigatorID::platform() const {
-  // STEALTH PATCH: Return spoofed platform
-  return String(stealth::NavigatorSpoof::GetPlatform().c_str());
-}
-
-// Original (disabled):
-String NavigatorID_platform_original() const"""
-    
-    if old_plat in content:
-        content = content.replace(old_plat, new_plat)
+    content, ok = replace_function_body(
+        content,
+        "String NavigatorID::platform() const",
+        "  // STEALTH PATCH: Return spoofed platform\n"
+        "  return String(stealth::NavigatorSpoof::GetPlatform().c_str());"
+    )
+    if ok:
         print("✅ platform patched")
-    
+
     nav_id_path.write_text(content)
+
+# ─────────────────────────────────────────────
+# 2b. Patch navigator hardwareConcurrency / deviceMemory
+# (each lives in its own mixin file, not navigator_id.cc)
+# ─────────────────────────────────────────────
+
+nav_hw_path = Path(
+    "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.cc"
+)
+
+if nav_hw_path.exists():
+    content = nav_hw_path.read_text()
+    content = add_stealth_include(content)
+
+    content, ok = replace_function_body(
+        content,
+        "unsigned NavigatorConcurrentHardware::hardwareConcurrency() const",
+        "  // STEALTH PATCH: Return spoofed core count\n"
+        "  return static_cast<unsigned>(stealth::NavigatorSpoof::GetHardwareConcurrency());"
+    )
+    if ok:
+        print("✅ hardwareConcurrency patched")
+
+    nav_hw_path.write_text(content)
+
+nav_mem_path = Path(
+    "third_party/blink/renderer/core/frame/navigator_device_memory.cc"
+)
+
+if nav_mem_path.exists():
+    content = nav_mem_path.read_text()
+    content = add_stealth_include(content)
+
+    content, ok = replace_function_body(
+        content,
+        "float NavigatorDeviceMemory::deviceMemory() const",
+        "  // STEALTH PATCH: Return spoofed memory\n"
+        "  return static_cast<float>(stealth::NavigatorSpoof::GetDeviceMemory());"
+    )
+    if ok:
+        print("✅ deviceMemory patched")
+
+    nav_mem_path.write_text(content)
 
 # ─────────────────────────────────────────────
 # 3. Patch maxTouchPoints
@@ -313,26 +400,17 @@ nav_maxtouch_path = Path(
 
 if nav_maxtouch_path.exists():
     content = nav_maxtouch_path.read_text()
-    
-    include = '#include "third_party/blink/renderer/platform/stealth/stealth_navigator.h"'
-    if include not in content:
-        last_include = content.rfind("#include")
-        line_end = content.find("\n", last_include)
-        content = content[:line_end + 1] + include + "\n" + content[line_end + 1:]
-    
-    old_touch = "int NavigatorMaxTouchPoints::maxTouchPoints() const"
-    new_touch = """int NavigatorMaxTouchPoints::maxTouchPoints() const {
-  // STEALTH PATCH: Return spoofed touch points
-  return stealth::NavigatorSpoof::GetMaxTouchPoints();
-}
+    content = add_stealth_include(content)
 
-// Original:
-int NavigatorMaxTouchPoints_original() const"""
-    
-    if old_touch in content:
-        content = content.replace(old_touch, new_touch)
+    content, ok = replace_function_body(
+        content,
+        "int NavigatorMaxTouchPoints::maxTouchPoints() const",
+        "  // STEALTH PATCH: Return spoofed touch points\n"
+        "  return stealth::NavigatorSpoof::GetMaxTouchPoints();"
+    )
+    if ok:
         print("✅ maxTouchPoints patched")
-    
+
     nav_maxtouch_path.write_text(content)
 
 # ─────────────────────────────────────────────
@@ -345,28 +423,23 @@ ua_data_path = Path(
 
 if ua_data_path.exists():
     content = ua_data_path.read_text()
-    
-    include = '#include "third_party/blink/renderer/platform/stealth/stealth_navigator.h"'
-    if include not in content:
-        last_include = content.rfind("#include")
-        line_end = content.find("\n", last_include)
-        content = content[:line_end + 1] + include + "\n" + content[line_end + 1:]
-    
-    # Patch getHighEntropyValues
-    old_hev = "NavigatorUAData::getHighEntropyValues"
-    if old_hev in content:
-        # Add spoofing to the high entropy values response
-        content = content.replace(
-            old_hev,
-            f"""{old_hev} {{
-  // STEALTH PATCH: Return spoofed values
-  auto& profile = stealth::NavigatorSpoof::GetProfile();
-  // Values will be set from profile below
-  // Original code continues...
-"""
-        )
+    content = add_stealth_include(content)
+
+    # Inject right after the function body actually opens (its
+    # signature spans multiple lines/params), instead of right after
+    # the identifier — the latter inserts a stray '{' before the
+    # parameter list even closes.
+    content, ok = insert_after_body_open(
+        content,
+        "NavigatorUAData::getHighEntropyValues",
+        "\n  // STEALTH PATCH: Return spoofed values\n"
+        "  auto& profile = stealth::NavigatorSpoof::GetProfile();\n"
+        "  // Values will be set from profile below\n"
+        "  // Original code continues...\n"
+    )
+    if ok:
         print("✅ User-Agent Client Hints patched")
-    
+
     ua_data_path.write_text(content)
 
 print("\n✅ Navigator spoofing patch complete")
