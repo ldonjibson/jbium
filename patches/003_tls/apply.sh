@@ -64,6 +64,7 @@ INJECTION = """
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
+#include <string_view>
 
 namespace {
 
@@ -77,11 +78,13 @@ void InitializeTLSSeed() {
   // Let the jbium driver pin a specific seed for reproducibility, same
   // pattern as STEALTH_CANVAS_SEED / STEALTH_WEBGL_SEED / STEALTH_AUDIO_SEED.
   if (const char* env_seed = std::getenv("STEALTH_TLS_SEED")) {
-    // Manual digit parse instead of strtoul: Chromium's hardening plugin
-    // flags strtoul's endptr-based API as -Wunsafe-buffer-usage-in-libc-call.
+    // std::string_view's iterator loop instead of strtoul or raw pointer
+    // arithmetic: Chromium's hardening plugin flags both strtoul's
+    // endptr-based API and our own raw pointer increments as unsafe.
     uint32_t parsed = 0;
-    for (const char* c = env_seed; *c >= '0' && *c <= '9'; ++c) {
-      parsed = parsed * 10 + static_cast<uint32_t>(*c - '0');
+    for (char ch : std::string_view(env_seed)) {
+      if (ch < '0' || ch > '9') break;
+      parsed = parsed * 10 + static_cast<uint32_t>(ch - '0');
     }
     g_tls_session_seed = parsed;
   } else {
