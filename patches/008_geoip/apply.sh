@@ -148,7 +148,7 @@ else:
             "          std::getenv(\"STEALTH_GEO_LANGUAGES\")) {\n"
             "    if (*geo_languages) {\n"
             "      languages_ = ParseAndSanitize(\n"
-            "          String::FromUtf8(geo_languages));\n"
+            "          String::FromUTF8(geo_languages));\n"
             "      languages_dirty_ = false;\n"
             "      return;\n"
             "    }\n"

@@ -89,7 +89,7 @@ class GPUSpoof {
   static String OrEnv(const char* env_name, String real_value) {
     const char* value = std::getenv(env_name);
     if (value && *value) {
-      return String::FromUtf8(std::string(value));
+      return String::FromUTF8(std::string(value));
     }
     return real_value;
   }

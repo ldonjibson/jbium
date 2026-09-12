@@ -358,7 +358,7 @@ patch_bodies(
     [(
         "String NavigatorID::platform() const",
         "  // STEALTH PATCH: navigator.platform — session-profile value.\n"
-        "  return String::FromUtf8(stealth::NavigatorSpoof::GetPlatform());",
+        "  return String::FromUTF8(stealth::NavigatorSpoof::GetPlatform());",
     )],
     "platform mixin",
 )
@@ -374,7 +374,7 @@ patch_bodies(
         "  // when no spoof is configured.\n"
         "  const char* spoofed = std::getenv(\"STEALTH_PLATFORM\");\n"
         "  if (spoofed && *spoofed) {\n"
-        "    return String::FromUtf8(spoofed);\n"
+        "    return String::FromUTF8(spoofed);\n"
         "  }\n"
         "  return GetReducedNavigatorPlatform();",
     )],
@@ -461,14 +461,14 @@ patch_bodies(
             "  const auto& spoofed = stealth::NavigatorSpoof::GetBrandEntries();\n"
             "  if (!spoofed.empty()) {\n"
             "    for (const auto& entry : spoofed) {\n"
-            "      AddBrandVersion(String::FromUtf8(entry.first),\n"
-            "                      String::FromUtf8(entry.second));\n"
+            "      AddBrandVersion(String::FromUTF8(entry.first),\n"
+            "                      String::FromUTF8(entry.second));\n"
             "    }\n"
             "    return;\n"
             "  }\n"
             "  for (const auto& brand_version : brand_version_list) {\n"
-            "    AddBrandVersion(String::FromUtf8(brand_version.brand),\n"
-            "                    String::FromUtf8(brand_version.version));\n"
+            "    AddBrandVersion(String::FromUTF8(brand_version.brand),\n"
+            "                    String::FromUTF8(brand_version.version));\n"
             "  }",
         ),
         (
@@ -480,30 +480,30 @@ patch_bodies(
             "      stealth::NavigatorSpoof::GetFullBrandEntries();\n"
             "  if (!spoofed.empty()) {\n"
             "    for (const auto& entry : spoofed) {\n"
-            "      AddBrandFullVersion(String::FromUtf8(entry.first),\n"
-            "                          String::FromUtf8(entry.second));\n"
+            "      AddBrandFullVersion(String::FromUTF8(entry.first),\n"
+            "                          String::FromUTF8(entry.second));\n"
             "    }\n"
             "    return;\n"
             "  }\n"
             "  for (const auto& brand_version : full_version_list) {\n"
-            "    AddBrandFullVersion(String::FromUtf8(brand_version.brand),\n"
-            "                        String::FromUtf8(brand_version.version));\n"
+            "    AddBrandFullVersion(String::FromUTF8(brand_version.brand),\n"
+            "                        String::FromUTF8(brand_version.version));\n"
             "  }",
         ),
         (
             "NavigatorUAData::SetPlatform",
             PROLOGUE
-            + "  platform_ = String::FromUtf8(profile.ua_platform);\n"
+            + "  platform_ = String::FromUTF8(profile.ua_platform);\n"
             "  platform_version_ =\n"
-            "      String::FromUtf8(profile.ua_platform_version);",
+            "      String::FromUTF8(profile.ua_platform_version);",
         ),
         (
             "NavigatorUAData::SetArchitecture",
-            PROLOGUE + "  architecture_ = String::FromUtf8(profile.ua_architecture);",
+            PROLOGUE + "  architecture_ = String::FromUTF8(profile.ua_architecture);",
         ),
         (
             "NavigatorUAData::SetModel",
-            PROLOGUE + "  model_ = String::FromUtf8(profile.ua_model);",
+            PROLOGUE + "  model_ = String::FromUTF8(profile.ua_model);",
         ),
         (
             "NavigatorUAData::SetUAFullVersion",
@@ -512,11 +512,11 @@ patch_bodies(
             "  const auto& full = stealth::NavigatorSpoof::GetFullBrandEntries();\n"
             "  ua_full_version_ = full.empty()\n"
             "                           ? ua_full_version\n"
-            "                           : String::FromUtf8(full.back().second);",
+            "                           : String::FromUTF8(full.back().second);",
         ),
         (
             "NavigatorUAData::SetBitness",
-            PROLOGUE + "  bitness_ = String::FromUtf8(profile.ua_bitness);",
+            PROLOGUE + "  bitness_ = String::FromUTF8(profile.ua_bitness);",
         ),
     ],
     "User-Agent Client Hints",
