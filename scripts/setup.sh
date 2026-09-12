@@ -215,6 +215,21 @@ fi
 CHROMIUM_ACTUAL=$(cat chrome/VERSION | head -4 | tr '\n' '.' | sed 's/\.$//')
 ok "Chromium source ready (version: $CHROMIUM_ACTUAL)"
 
+# The initial `fetch` above synced all third_party/ DEPS against
+# whatever origin/main's tip was at the time (a much newer Chromium
+# than the tag we just checked out). Switching src's own branch via
+# `git checkout` does NOT touch those DEPS-managed directories — they
+# stay on the newer revisions until `gclient sync` re-reads the DEPS
+# file at the new HEAD and updates them to match. Skipping this step
+# is exactly what produced, live: third_party/angle staying on a
+# revision new enough to use "allowlist" naming while the pinned
+# tag's root .gn still expects the older "whitelist" name, and gn gen
+# failing with "No value named exec_script_whitelist in scope
+# angle_dotfile_settings".
+log "Step 5b/9: Re-syncing dependencies to match pinned version..."
+gclient sync --nohooks --no-history -D 2>&1 | tee -a "$LOG" | tail -20
+ok "Dependencies synced to $CHROMIUM_VERSION"
+
 # ───────────────────────────────────────────────────────────────
 # 6. Run hooks (downloads third-party deps)
 # ───────────────────────────────────────────────────────────────
@@ -353,8 +368,12 @@ ozone_platform_x11 = true
 use_system_minilibc = false
 EOF
 
-# Generate build files
-gn gen out/Release 2>&1 | tail -1
+# Generate build files. `tail -1` here previously kept only the
+# caret-formatting line of a GN error and discarded the actual
+# "ERROR at //.gn:N:M: ..." message above it, turning a real,
+# diagnosable failure into unreadable noise. Tee the full output to
+# $LOG and show a real tail instead.
+gn gen out/Release 2>&1 | tee -a "$LOG" | tail -20
 ok "Build configured"
 
 # ───────────────────────────────────────────────────────────────

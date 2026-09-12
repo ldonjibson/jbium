@@ -81,6 +81,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM "fetch" above synced all third_party/ DEPS against origin/main's
+REM tip (a much newer Chromium). Switching src's own branch does NOT
+REM touch those DEPS-managed directories — gclient sync must re-read
+REM the DEPS file at the new HEAD to bring them in line. Verified live
+REM on Linux: skipping this leaves third_party/angle new enough to use
+REM "allowlist" naming while the pinned tag's root .gn still expects
+REM the older "whitelist" name, and gn gen fails outright.
+call gclient sync --nohooks --no-history -D
+if errorlevel 1 (
+    echo   ❌ Could not re-sync dependencies to pinned version
+    exit /b 1
+)
+
 echo   ✅ Source ready
 
 REM ── Step 3: Run hooks ──

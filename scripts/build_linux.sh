@@ -97,6 +97,16 @@ if [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "jbium-$CHROMIUM_VERSIO
     else
         err "Could not check out pinned Chromium $CHROMIUM_VERSION. Patches are written against this exact version — check network access to chromium.googlesource.com and retry."
     fi
+
+    # `fetch` above synced all third_party/ DEPS against origin/main's
+    # tip (a much newer Chromium). Switching src's own branch does NOT
+    # touch those DEPS-managed directories — gclient sync must re-read
+    # the DEPS file at the new HEAD to bring them in line. Verified
+    # live: skipping this leaves third_party/angle new enough to use
+    # "allowlist" naming while the pinned tag's root .gn still expects
+    # the older "whitelist" name, and gn gen fails outright.
+    log "  Re-syncing dependencies to match pinned version..."
+    gclient sync --nohooks --no-history -D
 fi
 
 ok "Source ready ($(cat chrome/VERSION | head -4 | tr '\n' '.' | sed 's/\.$//'))"
