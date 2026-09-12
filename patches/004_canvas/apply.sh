@@ -76,7 +76,9 @@ NOISE_HEADER = """
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
 #include "third_party/skia/include/core/SkBitmap.h"
-#include "third_party/skia/include/core/SkImages.h"
+// SkImages::RasterFromBitmap lives in SkImage.h on the pinned tree —
+// Skia hadn't split it into its own SkImages.h yet at this version.
+#include "third_party/skia/include/core/SkImage.h"
 
 namespace stealth {
 
