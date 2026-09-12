@@ -43,6 +43,11 @@ fi
 
 export PATH="$HOME/depot_tools:$PATH"
 
+# vpython3 (which depot_tools' bootstrap relies on) refuses to run as
+# root by default ("Running depot tools as root is sad."). Harmless to
+# set even when not root — this only matters if $EUID is 0.
+export VPYTHON_BYPASS="manually managed python not supported by chrome operations"
+
 # A freshly cloned depot_tools hasn't bootstrapped its vendored
 # python3/vpython3 toolchain yet — `fetch`/`gclient sync` fail with
 # "python3_bin_reldir.txt not found" until something triggers that
