@@ -60,9 +60,12 @@ export VPYTHON_BYPASS="manually managed python not supported by chrome operation
 # A freshly cloned depot_tools hasn't bootstrapped its vendored
 # python3/vpython3 toolchain yet — `fetch`/`gclient sync` fail with
 # "python3_bin_reldir.txt not found" until something triggers that
-# bootstrap. `gclient --version` does NOT trigger it (it short-circuits
-# before gclient.py's own bootstrap check) — update_depot_tools does.
-update_depot_tools
+# bootstrap. Verified empirically: `gclient --version` does NOT trigger
+# it, and `update_depot_tools` doesn't reliably either (it can exit 0
+# without ever creating python3_bin_reldir.txt) — `ensure_bootstrap`
+# is depot_tools' own script for exactly this and is the one that
+# actually works.
+"$HOME/depot_tools/ensure_bootstrap"
 
 ok "Prerequisites OK"
 
