@@ -80,7 +80,25 @@ if [ ! -d "src" ]; then
 fi
 
 cd "$CHROMIUM_DIR/src"
-ok "Source ready"
+
+# Pin to the exact version the patches were written and verified
+# against. `fetch --no-history` only grabs a shallow, depth-1 clone
+# of origin/main's tip — it does NOT bring down tags, so the tag ref
+# must be fetched explicitly, or the checked-out tree silently stays
+# on whatever HEAD is (which drifts forward continuously and can be
+# dozens of major versions newer, making every patch's source-text
+# markers stop matching).
+CHROMIUM_VERSION="120.0.6099.224"
+if [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "jbium-$CHROMIUM_VERSION" ]; then
+    if git fetch --depth 1 origin "refs/tags/$CHROMIUM_VERSION:refs/tags/$CHROMIUM_VERSION" \
+            && git checkout -B "jbium-$CHROMIUM_VERSION" "tags/$CHROMIUM_VERSION"; then
+        :
+    else
+        err "Could not check out pinned Chromium $CHROMIUM_VERSION. Patches are written against this exact version — check network access to chromium.googlesource.com and retry."
+    fi
+fi
+
+ok "Source ready ($(cat chrome/VERSION | head -4 | tr '\n' '.' | sed 's/\.$//'))"
 
 # ── Step 3: Run hooks ──
 log "Step 3/6: Running hooks..."

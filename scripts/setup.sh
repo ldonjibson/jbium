@@ -182,10 +182,24 @@ fi
 
 cd "$CHROMIUM_DIR/src"
 
-# Pin to a stable version
+# Pin to the exact version the patches were written and verified
+# against. `fetch --no-history` above only grabs a shallow, depth-1
+# clone of origin/main's tip — it does NOT bring down tags, so the
+# tag ref must be fetched explicitly or `git checkout tags/$VERSION`
+# silently fails to find it and falls through to whatever HEAD
+# happens to be (which can be dozens of major versions newer, making
+# every patch's source-text markers stop matching).
 CHROMIUM_VERSION="120.0.6099.224"
-git checkout "tags/$CHROMIUM_VERSION" -b "jbium-$CHROMIUM_VERSION" 2>/dev/null || \
-    warn "Could not checkout $CHROMIUM_VERSION, using current"
+if git fetch --depth 1 origin "refs/tags/$CHROMIUM_VERSION:refs/tags/$CHROMIUM_VERSION" \
+        && git checkout -B "jbium-$CHROMIUM_VERSION" "tags/$CHROMIUM_VERSION"; then
+    :
+else
+    err "Could not check out pinned Chromium $CHROMIUM_VERSION. Patches are" \
+        "written against this exact version and are not verified against" \
+        "any other — building on a mismatched tree risks every patch" \
+        "silently failing to apply. Check network access to" \
+        "chromium.googlesource.com and retry."
+fi
 
 CHROMIUM_ACTUAL=$(cat chrome/VERSION | head -4 | tr '\n' '.' | sed 's/\.$//')
 ok "Chromium source ready (version: $CHROMIUM_ACTUAL)"

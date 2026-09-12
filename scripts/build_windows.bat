@@ -62,6 +62,25 @@ if not exist "%CHROMIUM_DIR%\src" (
 
 cd /d %CHROMIUM_DIR%\src
 
+REM Pin to the exact version the patches were written and verified
+REM against. "fetch --no-history" only grabs a shallow, depth-1 clone
+REM of origin/main's tip — it does NOT bring down tags, so the tag ref
+REM must be fetched explicitly, or the tree silently stays on whatever
+REM HEAD is (which drifts forward continuously and can be dozens of
+REM major versions newer, making every patch's source-text markers
+REM stop matching).
+set CHROMIUM_VERSION=120.0.6099.224
+call git fetch --depth 1 origin refs/tags/%CHROMIUM_VERSION%:refs/tags/%CHROMIUM_VERSION%
+if errorlevel 1 (
+    echo   ❌ Could not fetch pinned Chromium tag %CHROMIUM_VERSION%
+    exit /b 1
+)
+call git checkout -B jbium-%CHROMIUM_VERSION% tags/%CHROMIUM_VERSION%
+if errorlevel 1 (
+    echo   ❌ Could not checkout pinned Chromium %CHROMIUM_VERSION%
+    exit /b 1
+)
+
 echo   ✅ Source ready
 
 REM ── Step 3: Run hooks ──
