@@ -113,7 +113,17 @@ ok "Source ready ($(cat chrome/VERSION | head -4 | tr '\n' '.' | sed 's/\.$//'))
 # ── Step 3: Run hooks ──
 log "Step 3/6: Running hooks..."
 
-gclient runhooks
+# gclient aborts entirely on the first failing hook, even optional
+# test-only data — verified live that a shallow (--no-history)
+# checkout hits this on the v8 wasm fuzzer corpus download, which has
+# no bearing on actually building the browser. Warn instead of
+# failing the whole script; a genuinely missing build dependency
+# will surface as a ninja error instead.
+if ! gclient runhooks; then
+    log "  WARNING: gclient runhooks reported a failure — continuing." \
+        "Commonly a non-essential DEPS hook (e.g. v8 fuzzer test data)" \
+        "that a --no-history shallow checkout can't fetch."
+fi
 ok "Hooks complete"
 
 # ── Step 4: Apply patches ──

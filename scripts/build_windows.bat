@@ -86,10 +86,17 @@ echo   ✅ Source ready
 REM ── Step 3: Run hooks ──
 echo [3/6] Running hooks...
 
+REM gclient aborts entirely on the first failing hook, even optional
+REM test-only data — verified live on Linux that a shallow
+REM (--no-history) checkout hits this on the v8 wasm fuzzer corpus
+REM download, unrelated to actually building the browser. Warn
+REM instead of failing the whole script; a genuinely missing build
+REM dependency will surface as a ninja error instead.
 call gclient runhooks
 if errorlevel 1 (
-    echo   ❌ Hooks failed
-    exit /b 1
+    echo   WARNING: gclient runhooks reported a failure — continuing.
+    echo   Commonly a non-essential DEPS hook ^(e.g. v8 fuzzer test data^)
+    echo   that a --no-history shallow checkout can't fetch.
 )
 
 echo   ✅ Hooks complete

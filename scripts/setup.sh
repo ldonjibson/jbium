@@ -225,7 +225,23 @@ log "Step 6/9: Running gclient hooks (~10-15 min)..."
 # ImportError traceback (it doesn't contain either word), making a
 # hard failure look like silent success. Tee instead of grep so
 # errors are never invisible, while still limiting screen noise.
-gclient runhooks 2>&1 | tee -a "$LOG" | tail -20
+#
+# gclient aborts runhooks entirely on the first failing hook, even
+# for optional, test-only data — verified live that a shallow
+# (--no-history) checkout hits exactly this on the v8 wasm fuzzer
+# corpus download (src/v8/test/fuzzer/wasm_corpus.tar.gz.sha1 "not
+# found when attempting enumerate files to download"), which has no
+# bearing on actually building the browser. Don't let one such hook
+# take down the whole script — warn instead, since a real missing
+# build dependency will surface soon enough as a ninja compile/link
+# failure, which is where it's actually diagnosable.
+if ! gclient runhooks 2>&1 | tee -a "$LOG" | tail -20; then
+    warn "gclient runhooks reported a failure (see $LOG for detail)." \
+         "Continuing — this is commonly a non-essential DEPS hook" \
+         "(e.g. v8 fuzzer test data) that a --no-history shallow" \
+         "checkout can't fetch. A genuinely missing build dependency" \
+         "will show up as a ninja error instead."
+fi
 ok "Hooks completed"
 
 # ───────────────────────────────────────────────────────────────
