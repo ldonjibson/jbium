@@ -346,7 +346,13 @@ enable_navigator_stored_client_hints = true
 # ═════════════════════════════════════════════
 # REMOVE BLOAT
 # ═════════════════════════════════════════════
-safe_browsing_mode = 0
+# 0 breaks gn gen/ninja (chrome's build graph hard-depends on safe_browsing
+# subcomponents — e.g. extensions' downloads_api.cc unconditionally
+# includes download_file_types.pb.h — regardless of what target you
+# actually build). Verified live: "file not found" on that generated
+# header, and ninja doesn't even know it as a target with this at 0.
+# config/args_*.gn already had this right; this copy didn't.
+safe_browsing_mode = 1
 enable_signin = false
 enable_browser_signin = false
 enable_one_click_signin = false
