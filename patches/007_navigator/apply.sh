@@ -18,8 +18,10 @@ Spoofs:
                                   that desktop JS actually reaches)
 - navigator.hardwareConcurrency (NavigatorConcurrentHardware mixin)
 - navigator.deviceMemory         (NavigatorDeviceMemory mixin)
-- navigator.maxTouchPoints       (NavigatorMaxTouchPoints, on trees
-                                  where that file still exists)
+- navigator.maxTouchPoints       (NavigatorEvents::maxTouchPoints,
+                                  core/events/navigator_events.cc —
+                                  the getter, per its IDL's
+                                  [ImplementedAs=NavigatorEvents])
 - User-Agent Client Hints        (brands / fullVersionList / platform /
                                   platformVersion / architecture /
                                   model / bitness / uaFullVersion)
@@ -411,20 +413,24 @@ patch_bodies(
 # ─────────────────────────────────────────────
 # 4. navigator.maxTouchPoints
 #
-# Only present on older trees; current Chromium moved this into the
-# browser-side web preferences. Skipped automatically when absent.
+# IDL says [ImplementedAs=NavigatorEvents] — the getter lives in
+# navigator_events.cc (core/events/), not a dedicated
+# navigator_max_touch_points.cc file. Verified against the actually
+# pinned Chromium tree; confirmed present there as:
+#   int32_t NavigatorEvents::maxTouchPoints(Navigator& navigator)
 # ─────────────────────────────────────────────
 
 patch_bodies(
-    "third_party/blink/renderer/core/frame/navigator_max_touch_points.cc",
+    "third_party/blink/renderer/core/events/navigator_events.cc",
     STEALTH_INCLUDE,
     [(
-        "int NavigatorMaxTouchPoints::maxTouchPoints() const",
+        "int32_t NavigatorEvents::maxTouchPoints(Navigator& navigator)",
         "  // STEALTH PATCH: navigator.maxTouchPoints —\n"
         "  // session-profile touch support.\n"
+        "  (void)navigator;\n"
         "  return stealth::NavigatorSpoof::GetMaxTouchPoints();",
     )],
-    "maxTouchPoints (removed upstream; skipped on current trees)",
+    "maxTouchPoints",
 )
 
 # ─────────────────────────────────────────────
@@ -518,7 +524,7 @@ patch_bodies(
 
 print("\n✅ Navigator spoofing patch complete")
 print("   Spoofed: platform, hardwareConcurrency, deviceMemory,")
-print("           maxTouchPoints (older trees), UA Client Hints")
+print("           maxTouchPoints, UA Client Hints")
 PYEOF
 
 PYTHON_BIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
