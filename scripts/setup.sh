@@ -291,6 +291,14 @@ use_thin_lto = true
 thin_lto_enable_optimizations = true
 is_cfi = true
 
+# is_official_build defaults to PGO phase 2, which needs Google's prebuilt
+# profiling data downloaded via checkout_pgo_profiles + gclient runhooks
+# (gated behind the same gsutil/CIPD auth already worked around above).
+# Not worth it for a patched fork — disable PGO instead. Verified live:
+# without this, gn gen fails outright ("Script returned non-zero exit
+# code" from tools/update_pgo_profiles.py, profile data not checked out).
+chrome_pgo_phase = 0
+
 # Compiler
 is_clang = true
 use_lld = true
