@@ -52,10 +52,20 @@ fi
 
 export PATH="$HOME/depot_tools:$PATH"
 
-# vpython3 (which depot_tools' bootstrap relies on) refuses to run as
-# root by default ("Running depot tools as root is sad."). Harmless to
-# set even when not root — this only matters if $EUID is 0.
-export VPYTHON_BYPASS="manually managed python not supported by chrome operations"
+# depot_tools' update_depot_tools refuses to run when $USER is
+# literally the string "root" ("Running depot tools as root is sad.")
+# and just exits 0 without doing anything — a check on $USER, not
+# actual privilege. Harmless to set even when not root.
+#
+# Do NOT use VPYTHON_BYPASS for this instead — verified empirically
+# that it makes vpython3 skip its own managed-interpreter selection
+# and fall back to bare system `python3`, which can be missing
+# `enum.StrEnum` that depot_tools' own gclient.py now requires
+# (Python 3.11+). That trades one failure for a worse, silent one
+# deep in gclient's hooks.
+if [ "$USER" = "root" ]; then
+    export USER="${SUDO_USER:-jbium-builder}"
+fi
 
 # A freshly cloned depot_tools hasn't bootstrapped its vendored
 # python3/vpython3 toolchain yet — `fetch`/`gclient sync` fail with

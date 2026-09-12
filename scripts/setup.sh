@@ -128,13 +128,24 @@ export PATH="/opt/depot_tools:$PATH"
 echo 'export DEPOT_TOOLS_METRICS=0' >> /root/.bashrc
 echo 'export DEPOT_TOOLS_UPDATE=0' >> /root/.bashrc
 
-# vpython3 (which depot_tools' bootstrap relies on) refuses to run as
-# root by default ("Running depot tools as root is sad."). This whole
-# script is root-only by design (/root/jbium, /root/.bashrc above), so
-# there's no non-root user to protect here — use vpython3's documented
-# bypass rather than fighting it.
-export VPYTHON_BYPASS="manually managed python not supported by chrome operations"
-echo "export VPYTHON_BYPASS=\"manually managed python not supported by chrome operations\"" >> /root/.bashrc
+# depot_tools' update_depot_tools refuses to run when $USER is
+# literally the string "root" ("Running depot tools as root is sad.")
+# and just exits 0 without doing anything — it's a check on $USER,
+# not actual privilege (EUID). This whole script is root-only by
+# design (/root/jbium, /root/.bashrc above), so give it a $USER that
+# isn't the literal string "root" to get past that one narrow check.
+#
+# Do NOT use VPYTHON_BYPASS for this instead (tempting, and it does
+# get past the same warning) — verified empirically that it makes
+# vpython3 skip its own managed-interpreter selection entirely and
+# fall back to bare system `python3`. On Ubuntu 22.04 that's Python
+# 3.10, and depot_tools' own gclient.py now requires 3.11's
+# `enum.StrEnum`, so vpython3-bypass trades one failure
+# ("python3_bin_reldir.txt not found") for a worse, silent one
+# (ImportError deep in gclient's hooks, invisible behind the
+# `grep -E "(Running|Still)"` progress filter below).
+export USER="${SUDO_USER:-jbium-builder}"
+echo "export USER=\"\${SUDO_USER:-jbium-builder}\"" >> /root/.bashrc
 
 # A freshly cloned depot_tools hasn't bootstrapped its vendored
 # python3/vpython3 toolchain yet — `fetch`/`gclient sync` fail with
@@ -209,7 +220,12 @@ ok "Chromium source ready (version: $CHROMIUM_ACTUAL)"
 # ───────────────────────────────────────────────────────────────
 log "Step 6/9: Running gclient hooks (~10-15 min)..."
 
-gclient runhooks 2>&1 | grep -E "(Running|Still)" | tail -5
+# Full output goes to $LOG regardless — filtering to just
+# "Running"/"Still" lines for the screen previously hid a real
+# ImportError traceback (it doesn't contain either word), making a
+# hard failure look like silent success. Tee instead of grep so
+# errors are never invisible, while still limiting screen noise.
+gclient runhooks 2>&1 | tee -a "$LOG" | tail -20
 ok "Hooks completed"
 
 # ───────────────────────────────────────────────────────────────
