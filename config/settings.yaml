@@ -4,8 +4,9 @@
 
 # Browser binary
 browser:
-  binary_path: "/root/jbium/chromium/src/out/Release/jbium"
-  user_data_dir: "/tmp/stealth-profile"
+  # Leave empty to auto-detect (driver/platform_detect.py searches the
+  # build output dir and common install locations for the current OS).
+  binary_path: ""
   headless: false
   window_size: "--start-maximized"
   extra_args:

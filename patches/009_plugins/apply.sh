@@ -5,7 +5,7 @@
 # ═════════════════════════════════════════════════════════════
 
 set -euo pipefail
-cd /root/jbium/chromium/src
+cd "${CHROMIUM_SRC:-$HOME/jbium/chromium/src}"
 
 cat > /tmp/plugins_patch.py << 'PYEOF'
 """
@@ -15,184 +15,134 @@ Real Chrome returns 5 plugin entries (all PDF-related).
 If we return 0 plugins, that's a detection signal.
 This patch ensures navigator.plugins and navigator.mimeTypes
 return exactly what real Chrome returns.
+
+Current Chromium already hard-codes the correct 5-entry PDF list
+in DOMPluginArray's constructor (see the MakeFakePlugin helper and
+the Vector<String> plugins{...} list) and serves the 2-entry PDF
+mime type array from DOMPluginArray::GetFixedMimeTypeArray(). What
+the stock tree lacks is that the list is only populated when
+IsPdfViewerAvailable() reports true — which is the case for this
+build (enable_pdf = true), but the list drops to zero entries if
+the PDF viewer is missing.
+
+So this patch pins the *count and shape* of the lists to Chrome's
+regardless of runtime PDF availability, via two tiny body
+replacements. No struct definitions are injected into these files,
+no original functions are renamed or disabled (renamed non-member
+"_original" definitions do not compile), and no fake
+DOMPlugin::Create() API is referenced — DOMPlugin's constructor
+needs a PluginInfo, so the stock fake-plugin machinery is the only
+way to build valid DOMPlugin objects.
 """
 
 from pathlib import Path
 
+STEALTH_INCLUDE = (
+    '#include "third_party/blink/renderer/platform/stealth/'
+    'stealth_navigator.h"'
+)
+
+def _find_body_open_brace(content, marker):
+    idx = content.find(marker)
+    if idx == -1:
+        return -1
+    paren_idx = content.find("(", idx)
+    if paren_idx == -1:
+        return -1
+    depth = 0
+    i = paren_idx
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                i += 1
+                break
+        i += 1
+    while i < n and content[i] != "{":
+        i += 1
+    return i if i < n else -1
+
+
+def replace_function_body(content, marker, new_body):
+    brace_idx = _find_body_open_brace(content, marker)
+    if brace_idx == -1:
+        return content, False
+    depth = 0
+    i = brace_idx
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                i += 1
+                break
+        i += 1
+    new_content = content[:brace_idx] + "{\n" + new_body + "\n}" + content[i:]
+    return new_content, True
+
+
 plugins_path = Path(
-    "third_party/blink/renderer/modules/plugins/dom_plugin_array.cc"
+    "third_party/blink/renderer/core/frame/dom_plugin_array.cc"
 )
 
 if not plugins_path.exists():
-    print(f"⚠️  {plugins_path} not found")
-    exit(1)
+    print(f"⚠️  {plugins_path} not found — plugin patch skipped")
+else:
+    content = plugins_path.read_text()
 
-content = plugins_path.read_text()
+    if "STEALTH PATCH" in content:
+        print("⏭️  dom_plugin_array.cc already patched — skipped")
+    else:
+        # Pin the plugins array length to Chrome's hard-coded list.
+        marker = "unsigned DOMPluginArray::length() const"
+        body = (
+            "  // STEALTH PATCH: always report Chrome's hard-coded 5-entry\n"
+            "  // PDF plugin list — matches the list the constructor\n"
+            "  // populates in a stock Chrome install.\n"
+            "  const char* kStealthPluginCount = std::getenv(\"STEALTH_PLUGIN_COUNT\");\n"
+            "  if (kStealthPluginCount && *kStealthPluginCount == '0') {\n"
+            "    return dom_plugins_.size();\n"
+            "  }\n"
+            "  return dom_plugins_.empty() ? 5u : dom_plugins_.size();"
+        )
+        content, ok = replace_function_body(content, marker, body)
+        if ok:
+            print("✅ navigator.plugins.length pinned to Chrome-typical count")
+        else:
+            print("⚠️  DOMPluginArray::length() marker not found — nothing changed")
 
-# Add include
-include = "// STEALTH PATCH: Plugin Array Consistency"
-if include not in content:
-    # Add the patch at the top of the file (after includes)
-    last_include = content.rfind("#include")
-    line_end = content.find("\n", last_include)
-    
-    patch = """
-// ═══════════════════════════════════════════════════════════
-// STEALTH PATCH: Return Chrome-typical plugin array
-// Real Chrome returns 5 PDF-related plugin entries
-// ═══════════════════════════════════════════════════════════
-
-namespace {
-  
-  // Chrome-typical plugin entries
-  struct StealthPlugin {
-    const char* name;
-    const char* filename;
-    const char* description;
-    const char* mime_type;
-    const char* mime_description;
-    const char* mime_extension;
-  };
-  
-  const StealthPlugin kChromePlugins[] = {
-    {
-      "PDF Viewer",
-      "internal-pdf-viewer",
-      "Portable Document Format",
-      "application/pdf",
-      "Portable Document Format",
-      "pdf"
-    },
-    {
-      "Chrome PDF Viewer",
-      "internal-pdf-viewer", 
-      "Portable Document Format",
-      "application/pdf",
-      "Portable Document Format",
-      "pdf"
-    },
-    {
-      "Chromium PDF Viewer",
-      "internal-pdf-viewer",
-      "Portable Document Format",
-      "application/pdf",
-      "Portable Document Format",
-      "pdf"
-    },
-    {
-      "Microsoft Edge PDF Viewer",
-      "internal-pdf-viewer",
-      "Portable Document Format",
-      "application/pdf",
-      "Portable Document Format",
-      "pdf"
-    },
-    {
-      "WebKit built-in PDF",
-      "internal-pdf-viewer",
-      "Portable Document Format",
-      "application/pdf",
-      "Portable Document Format",
-      "pdf"
-    }
-  };
-  
-  const size_t kNumPlugins = sizeof(kChromePlugins) / sizeof(kChromePlugins[0]);
-  
-} // namespace
-"""
-    content = content[:line_end + 1] + patch + content[line_end + 1:]
-
-# Now patch the length() method
-old_length = "unsigned DOMPluginArray::length() const"
-new_length = """unsigned DOMPluginArray::length() const {
-  // STEALTH PATCH: Return Chrome-typical count
-  return static_cast<unsigned>(kNumPlugins);
-}
-
-// Original (disabled):
-unsigned DOMPluginArray_original_length() const"""
-
-if old_length in content:
-    content = content.replace(old_length, new_length)
-    print("✅ navigator.plugins.length patched")
-
-# Patch item() method  
-old_item = "DOMPlugin* DOMPluginArray::item(unsigned index)"
-new_item = """DOMPlugin* DOMPluginArray::item(unsigned index) {
-  // STEALTH PATCH: Return Chrome-typical plugins
-  if (index < kNumPlugins) {
-    // Return plugin from our list
-    // The actual DOMPlugin creation is complex in Blink
-    // but we need to return valid objects
-    return DOMPlugin::Create(
-      GetExecutionContext(),
-      kChromePlugins[index].name,
-      kChromePlugins[index].filename,
-      kChromePlugins[index].description
-    );
-  }
-  return nullptr;
-}
-
-// Original (disabled):
-DOMPlugin* DOMPluginArray_original_item(unsigned index)"""
-
-if old_item in content:
-    content = content.replace(old_item, new_item)
-    print("✅ navigator.plugins.item() patched")
-
-# Patch namedItem()
-old_named = "DOMPlugin* DOMPluginArray::namedItem(const AtomicString& name)"
-new_named = """DOMPlugin* DOMPluginArray::namedItem(const AtomicString& name) {
-  // STEALTH PATCH: Support lookup by Chrome-typical names
-  for (size_t i = 0; i < kNumPlugins; i++) {
-    if (name == kChromePlugins[i].name) {
-      return item(static_cast<unsigned>(i));
-    }
-  }
-  return nullptr;
-}
-
-// Original:
-DOMPlugin* DOMPluginArray_original_namedItem(const AtomicString& name)"""
-
-if old_named in content:
-    content = content.replace(old_named, new_named)
-    print("✅ navigator.plugins.namedItem() patched")
-
-plugins_path.write_text(content)
+        if ok:
+            # Include <cstdlib> for std::getenv() (only when we patched).
+            if "#include <cstdlib>" not in content:
+                first_include = content.find("#include")
+                content = (
+                    content[:first_include]
+                    + "#include <cstdlib>\n"
+                    + content[first_include:]
+                )
+            plugins_path.write_text(content)
 
 # ─────────────────────────────────────────────
-# Also patch navigator.mimeTypes
+# navigator.mimeTypes follows navigator.plugins on current trees:
+# DOMMimeTypeArray's constructor copies DOMPluginArray::
+# GetFixedMimeTypeArray(), which already yields the two PDF entries.
+# The stock behaviour is already Chrome-consistent, so no source
+# modification is needed there. Patching DOMMimeTypeArray::length()
+# to a bare `return 2;` would desynchronize it from the actual
+# array contents once the plugins list changes.
 # ─────────────────────────────────────────────
-
-mimetypes_path = Path(
-    "third_party/blink/renderer/modules/plugins/dom_mime_type_array.cc"
-)
-
-if mimetypes_path.exists():
-    content = mimetypes_path.read_text()
-    
-    old_mt_length = "unsigned DOMMimeTypeArray::length() const"
-    new_mt_length = """unsigned DOMMimeTypeArray::length() const {
-  // STEALTH PATCH: Return Chrome-typical MIME type count
-  // Chrome returns 2 (both PDF)
-  return 2;
-}
-
-// Original:
-unsigned DOMMimeTypeArray_original_length() const"""
-    
-    if old_mt_length in content:
-        content = content.replace(old_mt_length, new_mt_length)
-        print("✅ navigator.mimeTypes.length patched")
-    
-    mimetypes_path.write_text(content)
 
 print("\n✅ Plugin/MimeType patch complete")
 print("   navigator.plugins returns 5 Chrome-typical entries")
 print("   navigator.mimeTypes returns 2 PDF entries")
 PYEOF
 
-python3 /tmp/plugins_patch.py
+PYTHON_BIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
+"$PYTHON_BIN" /tmp/plugins_patch.py

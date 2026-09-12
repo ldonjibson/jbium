@@ -132,12 +132,19 @@ def find_browser_binary(
     # Build search paths
     if search_paths is None:
         home = Path.home()
-        
+        build_out = home / "jbium" / "chromium" / "src" / "out" / "Release"
+
         search_paths = [
+            # Raw build output — scripts/build_linux.sh, build_macos.sh, and
+            # build_windows.bat all fetch Chromium to ~/jbium/chromium/src
+            # and rename the compiled binary here, before any packaging step.
+            build_out / info.binary_name,
+            build_out / "Jbium.app/Contents/MacOS/jbium",  # macOS .app bundle
+
             # Project directory
             Path(__file__).parent.parent / "chrome" / info.binary_name,
             Path(__file__).parent.parent / info.binary_name,
-            
+
             # Install locations
             home / ".local/share/jbium/bin" / info.binary_name,  # Linux
             home / ".local/share/jbium" / info.binary_name,

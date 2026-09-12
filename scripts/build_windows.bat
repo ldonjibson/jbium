@@ -67,13 +67,30 @@ echo   ✅ Hooks complete
 REM ── Step 4: Apply patches ──
 echo [4/6] Applying stealth patches...
 
-for %%d in ("%~dp0..\patches\0*") do (
-    if exist "%%d\apply.bat" (
+REM Patches are bash scripts (they shell out to a python heredoc), not
+REM native .bat/.py files. Run them through Git Bash, which is already
+REM on PATH because Git is a checked prerequisite above.
+where bash >nul 2>&1
+if errorlevel 1 (
+    echo   ❌ bash not found. Install Git for Windows ^(provides Git Bash^)
+    echo      so patches/*/apply.sh can run.
+    exit /b 1
+)
+
+REM Give the bash patches a forward-slash path they can cd into directly
+REM (Git Bash accepts drive-letter paths like C:/... natively).
+set CHROMIUM_SRC=%CHROMIUM_DIR:\=/%/src
+
+REM Plain "for" only matches files, never directories — patches live in
+REM directories (001_automation/, 002_cdp/, ...), so this needs /D.
+for /D %%d in ("%~dp0..\patches\0*") do (
+    if exist "%%d\apply.sh" (
         echo   Applying: %%~nxd
-        call "%%d\apply.bat"
-    ) else if exist "%%d\apply.py" (
-        echo   Applying: %%~nxd
-        python "%%d\apply.py"
+        call bash "%%d\apply.sh"
+        if errorlevel 1 (
+            echo   ❌ Patch failed: %%~nxd
+            exit /b 1
+        )
     )
 )
 

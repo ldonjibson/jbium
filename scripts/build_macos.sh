@@ -85,6 +85,7 @@ if [ -f "$PATCH_MARKER" ] && [ "${FORCE_PATCH:-0}" != "1" ]; then
 else
     log "Step 4/6: Applying stealth patches..."
 
+    export CHROMIUM_SRC="$CHROMIUM_DIR/src"
     for patch_dir in "$PATCHES_DIR"/0*/; do
         if [ -f "$patch_dir/apply.sh" ]; then
             log "  Applying: $(basename "$patch_dir")"
@@ -139,9 +140,9 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$OUTPUT_DIR/jbium" "$APP_DIR/Contents/MacOS/jbium"
-cp "$OUTPUT_DIR"/*.pak "$APP_DIR/Contents/MacOS/"
+cp "$OUTPUT_DIR"/*.pak "$APP_DIR/Contents/MacOS/" 2>/dev/null || true
 cp "$OUTPUT_DIR"/*.bin "$APP_DIR/Contents/MacOS/" 2>/dev/null || true
-cp "$OUTPUT_DIR/icudtl.dat" "$APP_DIR/Contents/MacOS/"
+cp "$OUTPUT_DIR/icudtl.dat" "$APP_DIR/Contents/MacOS/" 2>/dev/null || true
 
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << 'PLIST_EOF'

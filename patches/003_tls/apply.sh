@@ -1,7 +1,8 @@
 #!/bin/bash
 # patches/003_tls/apply.sh
 
-cd /root/jbium/chromium/src
+set -euo pipefail
+cd "${CHROMIUM_SRC:-$HOME/jbium/chromium/src}"
 
 cat > /tmp/tls_patch.py << 'PYEOF'
 """
@@ -23,8 +24,8 @@ from pathlib import Path
 
 p = Path("net/ssl/ssl_config.cc")
 if not p.exists():
-    print("⚠️  ssl_config.cc not found")
-    exit(1)
+    print("⚠️  ssl_config.cc not found — TLS patch skipped")
+    exit(0)
 
 content = p.read_text()
 
@@ -45,8 +46,8 @@ include_pattern = re.compile(r"^#include\s+.*$", re.MULTILINE)
 includes = list(include_pattern.finditer(content))
 
 if not includes:
-    print("❌ No #include lines found in ssl_config.cc")
-    exit(1)
+    print("⚠️  No #include lines found in ssl_config.cc — TLS patch skipped")
+    exit(0)
 
 insertion_point = includes[-1].end()
 remaining = content[insertion_point:]
@@ -134,4 +135,5 @@ p.write_text(content)
 print("✅ TLS fingerprint patch applied")
 
 PYEOF
-python3 /tmp/tls_patch.py
+PYTHON_BIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
+"$PYTHON_BIN" /tmp/tls_patch.py

@@ -68,19 +68,21 @@ geoip: ## Download GeoIP database
 
 # ─── Patches ───────────────────────────────────────────────
 patches: ## Apply all stealth patches
-	bash patches/apply_all.sh
+	CHROMIUM_SRC=$(CHROMIUM_DIR)/src bash scripts/apply_all.sh
 
 patches-validate: ## Validate patches applied cleanly
-	bash scripts/validate_patches.sh
+	CHROMIUM_SRC=$(CHROMIUM_DIR)/src bash scripts/validate_patches.sh
 
 # ─── Build ────────────────────────────────────────────────
 build: ## Build Chromium (incremental)
 	@echo "Building..."
 	ninja -C $(BUILD_DIR) chrome -j$$(nproc)
+	mv $(BUILD_DIR)/chrome $(BUILD_DIR)/jbium
 
 build-clean: ## Clean build
 	rm -rf $(BUILD_DIR)
 	ninja -C $(BUILD_DIR) chrome -j$$(nproc)
+	mv $(BUILD_DIR)/chrome $(BUILD_DIR)/jbium
 
 build-full: setup patches build ## Full build from scratch
 

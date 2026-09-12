@@ -64,7 +64,7 @@ bash scripts/build_linux.sh
 scp -P <port> root@<instance-ip>:~/jbium/chromium/src/out/Release/jbium-linux-x64.tar.gz .
 ```
 
-Rebuilding after a patch change is incremental — `bash patches/apply_all.sh && bash scripts/build_linux.sh` only recompiles what changed. `scripts/auto_build.sh` will watch `patches/` and rebuild automatically if you're iterating on a patch.
+Rebuilding after a patch change is incremental — `FORCE_PATCH=1 bash scripts/build_linux.sh` re-applies patches and only recompiles what changed. `scripts/auto_build.sh` will watch `patches/` and rebuild automatically if you're iterating on a patch.
 
 ## Running it
 

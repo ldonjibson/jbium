@@ -27,6 +27,7 @@ import os
 import random
 import signal
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -216,7 +217,35 @@ class Jbium:
             target_id=target_id["targetId"],
             session=self._session,
         )
-        
+
+        # Geolocation override (replaces the old in-source patch):
+        # serve the GeoIP profile's coordinates (with per-session
+        # jitter) instead of any real location. CDP's
+        # Emulation.setGeolocationOverride covers
+        # navigator.geolocation consistently.
+        #
+        # Sent through page._command() (not a raw page_ws.send())
+        # so the response is read and matched by the same id
+        # counter every other command on this page uses — a raw
+        # send with a hardcoded id would leave its response
+        # unread on the socket, where it could be picked up by
+        # the next real command as a false match.
+        if self._session and getattr(self._session, "geo_profile", None):
+            geo = self._session.geo_profile
+            jitter_lat = random.uniform(-0.05, 0.05)
+            jitter_lng = random.uniform(-0.05, 0.05)
+            try:
+                await page._command("Emulation.setGeolocationOverride", {
+                    "latitude": round(geo.latitude + jitter_lat, 6),
+                    "longitude": round(geo.longitude + jitter_lng, 6),
+                    "accuracy": 100,
+                })
+                logger.debug(f"  Geolocation override: "
+                             f"{geo.latitude + jitter_lat:.4f}, "
+                             f"{geo.longitude + jitter_lng:.4f}")
+            except Exception as e:
+                logger.warning(f"  Geolocation override failed: {e}")
+
         self._pages.append(page)
         return page
     
@@ -270,11 +299,11 @@ class Jbium:
             with open(config_file) as f:
                 return yaml.safe_load(f) or {}
         
-        # Defaults
+        # Defaults — binary_path empty means "auto-detect" via
+        # driver.platform_detect.find_browser_binary() (see _find_browser).
         return {
             "browser": {
-                "binary_path": "/root/jbium/chromium/src/out/Release/jbium",
-                "user_data_dir": "/tmp/stealth-profile",
+                "binary_path": "",
                 "headless": False,
             },
             "proxy": {
@@ -298,29 +327,25 @@ class Jbium:
         }
     
     def _find_browser(self) -> str:
-        """Find the stealth browser binary"""
-        
-        # Check config
-        if self.config.get("browser", {}).get("binary_path"):
-            path = self.config["browser"]["binary_path"]
-            if Path(path).exists():
-                return path
-        
-        # Check common locations
-        common_paths = [
-            "/root/jbium/chromium/src/out/Release/jbium",
-            "/usr/local/bin/jbium",
-            "./build/jbium",
-            "./jbium",
-        ]
-        
-        for path in common_paths:
-            if Path(path).exists():
-                return path
-        
-        raise FileNotFoundError(
-            "Stealth browser not found. Build it first or set binary_path in config."
-        )
+        """Find the stealth browser binary (cross-platform: Windows/macOS/Linux)"""
+
+        # Check config first, but only if it actually points at a real file —
+        # a stale/default configured path should fall through to the
+        # cross-platform search below rather than hard-failing.
+        configured = self.config.get("browser", {}).get("binary_path")
+        if configured and Path(configured).exists():
+            return configured
+
+        from driver.platform_detect import find_browser_binary
+
+        try:
+            return str(find_browser_binary())
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                "Stealth browser not found. Build it first "
+                "(scripts/build_linux.sh, build_macos.sh, or "
+                "build_windows.bat) or set binary_path in config."
+            )
     
     async def _get_proxy_ip(self, proxy_url: str) -> str:
         """Get the actual exit IP of the proxy"""
@@ -406,29 +431,35 @@ class Jbium:
         env_vars["STEALTH_GEO_CITY"] = geo.city
         env_vars["STEALTH_GEO_TIMEZONE"] = geo.timezone
         env_vars["STEALTH_GEO_LANGUAGE"] = geo.language
+        env_vars["STEALTH_GEO_LANGUAGES"] = f"{geo.locale},{geo.language};q=0.8,en;q=0.5"
         env_vars["STEALTH_GEO_LOCALE"] = geo.locale
         env_vars["STEALTH_GEO_LATITUDE"] = str(geo.latitude)
         env_vars["STEALTH_GEO_LONGITUDE"] = str(geo.longitude)
         env_vars["STEALTH_GEO_CURRENCY"] = geo.currency
+        
+        # Timezone: TZ is honored by libc/ICU/V8 Date directly, keeping
+        # getTimezoneOffset(), Intl, and date formatting consistent with
+        # the proxy IP's location (replaces the old v8 source patch).
+        env_vars["TZ"] = geo.timezone
         
         # ── Canvas/WebGL noise (Patch 004/005) ──
         env_vars["STEALTH_CANVAS_SEED"] = str(device.canvas_seed)
         env_vars["STEALTH_WEBGL_SEED"] = str(device.webgl_seed)
         env_vars["STEALTH_AUDIO_SEED"] = str(device.audio_seed)
         
-        # ── GPU profile (Patch 005) ──
-        # Select GPU profile based on device
-        gpu_profiles = {
-            "Intel": 0,
-            "NVIDIA": 1,
-            "AMD": 2,
-            "Apple": 3,
-        }
-        gpu_vendor = device.gpu_vendor
-        for vendor_name, profile_idx in gpu_profiles.items():
-            if vendor_name.lower() in gpu_vendor.lower():
-                env_vars["STEALTH_GPU_PROFILE"] = str(profile_idx)
-                break
+        # ── GPU strings (Patch 005) ──
+        # The WebGL patch reads these directly and passes the real
+        # driver value through when unset.
+        env_vars["STEALTH_GPU_VENDOR"] = device.gpu_vendor
+        env_vars["STEALTH_GPU_RENDERER"] = device.gpu_renderer
+        # Plausible ANGLE-style version strings consistent with the
+        # spoofed GPU; masked GL_VERSION/GLSL embed these.
+        env_vars["STEALTH_GPU_VERSION"] = (
+            "OpenGL ES 3.2 Chromium"
+            if "ANGLE" not in device.gpu_renderer
+            else f"OpenGL ES 3.2 ({device.gpu_renderer})"
+        )
+        env_vars["STEALTH_GPU_GLSL_VERSION"] = "OpenGL ES GLSL ES 3.20"
         
         # ── Font filtering (Patch 006) ──
         # Map OS to font filter
@@ -457,6 +488,11 @@ class Jbium:
         # ── WebRTC (Patch 010) ──
         env_vars["STEALTH_FILTER_WEBRTC"] = "true"
         env_vars["STEALTH_PROXY_IP"] = self._session.proxy_ip if self._session else ""
+        
+        # ── Battery API (Patch 010) ──
+        # Session-stable, plausible values; unset = real readings pass through.
+        env_vars["STEALTH_BATTERY_LEVEL"] = f"{0.55 + (device.canvas_seed % 40) / 100.0:.2f}"
+        env_vars["STEALTH_BATTERY_CHARGING"] = "false" if device.canvas_seed % 2 else "true"
         
         return env_vars
     
@@ -488,8 +524,12 @@ class Jbium:
         # Proxy
         args.append(f"--proxy-server={proxy_url}")
         
-        # User data directory (fresh)
-        user_data_dir = f"/tmp/stealth-profile-{int(time.time())}"
+        # User data directory (fresh) — tempfile.gettempdir() resolves to
+        # %TEMP% on Windows and /tmp on Linux/macOS, unlike a hardcoded
+        # "/tmp/..." path which isn't valid on native Windows.
+        user_data_dir = str(
+            Path(tempfile.gettempdir()) / f"stealth-profile-{int(time.time())}"
+        )
         args.append(f"--user-data-dir={user_data_dir}")
         
         # Remote debugging (for CDP connection — temporary)

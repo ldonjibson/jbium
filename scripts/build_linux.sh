@@ -76,6 +76,7 @@ if [ -f "$PATCH_MARKER" ] && [ "${FORCE_PATCH:-0}" != "1" ]; then
 else
     log "Step 4/6: Applying stealth patches..."
 
+    export CHROMIUM_SRC="$CHROMIUM_DIR/src"
     for patch_dir in "$PATCHES_DIR"/0*/; do
         if [ -f "$patch_dir/apply.sh" ]; then
             log "  Applying: $(basename "$patch_dir")"

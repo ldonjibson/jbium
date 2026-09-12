@@ -1,95 +1,169 @@
 #!/bin/bash
+# ═════════════════════════════════════════════════════════════
 # patches/001_automation/apply.sh
+# Hide automation: navigator.webdriver + automation infobar
+# ═════════════════════════════════════════════════════════════
 
-cd /root/jbium/chromium/src
+set -euo pipefail
+cd "${CHROMIUM_SRC:-$HOME/jbium/chromium/src}"
 
-# ─────────────────────────────────────────────
-# 1. navigator.webdriver = false
-# ─────────────────────────────────────────────
+cat > /tmp/automation_patch.py << 'PYEOF'
+"""
+STEALTH PATCH: Automation Hiding
 
-cat > content/renderer/renderer_main_frame.cc << 'PATCH1'
-// STEALTH PATCH: navigator.webdriver
-// Chromium exposes --enable-automation via this flag
+1. navigator.webdriver: the real implementation lives in
+   bool Navigator::webdriver() const (third_party/blink/renderer/
+   core/frame/navigator.cc) — it checks
+   RuntimeEnabledFeatures::AutomationControlledEnabled() and
+   probe::ApplyAutomationOverride(). The previous version of this
+   patch overwrote content/renderer/renderer_main_frame.cc with a
+   12-line stub (destroying the real file — RendererMainFrame
+   doesn't even exist in current trees) and never touched the
+   actual webdriver() code path.
 
-#include "third_party/blink/public/web/web_runtime_features.h"
+2. "Chrome is being controlled by automated test software" bar:
+   shown by the static AutomationInfoBarDelegate::Create() in
+   chrome/browser/ui/startup/automation_infobar_delegate.cc via
+   GlobalConfirmInfoBar::Show(). No-op that single function; the
+   per-tab Create(manager) overload stays stock so the class still
+   links and behaves normally if invoked directly.
 
-void RendererMainFrame::DidClearWindowObject() {
-  // ORIGINAL: if automation mode, set navigator.webdriver = true
-  // PATCHED: never set it to true
-  
-  // Do nothing if automation is enabled
-  // navigator.webdriver stays false
-}
-PATCH1
+3. --enable-automation: the jbium driver never passes it (it
+   launches plain CDP debugging), and blindly commenting every
+   source line containing the string "enable-automation" (the old
+   approach) corrupts switch tables and string literals. Removed.
+"""
 
-# ─────────────────────────────────────────────
-# 2. Remove "Chrome is being controlled..." infobar
-# ─────────────────────────────────────────────
-
-# File: chrome/browser/ui/startup/automation_infobar_delegate.cc
-# Make the infobar never show
-
-cat > /tmp/infobar_patch.py << 'PYEOF'
-import re
 from pathlib import Path
 
-file_path = Path("chrome/browser/ui/startup/automation_infobar_delegate.cc")
-if file_path.exists():
-    content = file_path.read_text()
-    
-    # Replace the ShouldShow method
-    old = "bool ShouldShow(InfoBarService*)"
-    new = "bool ShouldShow(InfoBarService*) { return false; } // STEALTH"
-    
-    if old in content:
-        content = content.replace(
-            old,
-            f"{new}\n    // Original code disabled\n    if (false) {{"
+
+def _find_body_open_brace(content, marker):
+    """Index of the '{' opening the body of the function whose
+    signature contains `marker`; skips the parameter list first so
+    multi-line signatures work."""
+    idx = content.find(marker)
+    if idx == -1:
+        return -1
+    paren_idx = content.find("(", idx)
+    if paren_idx == -1:
+        return -1
+    depth = 0
+    i = paren_idx
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                i += 1
+                break
+        i += 1
+    while i < n and content[i] != "{":
+        i += 1
+    return i if i < n else -1
+
+
+def replace_function_body(content, marker, new_body):
+    brace_idx = _find_body_open_brace(content, marker)
+    if brace_idx == -1:
+        return content, False
+    depth = 0
+    i = brace_idx
+    n = len(content)
+    while i < n:
+        c = content[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                i += 1
+                break
+        i += 1
+    new_content = content[:brace_idx] + "{\n" + new_body + "\n}" + content[i:]
+    return new_content, True
+
+
+# ─────────────────────────────────────────────
+# 1. navigator.webdriver → always false
+# ─────────────────────────────────────────────
+
+nav_path = Path("third_party/blink/renderer/core/frame/navigator.cc")
+
+if not nav_path.exists():
+    print("⚠️  navigator.cc not found — webdriver patch skipped")
+else:
+    content = nav_path.read_text()
+    if "STEALTH PATCH" in content:
+        print("⏭️  navigator.cc already patched — skipped")
+    else:
+        marker = "bool Navigator::webdriver() const"
+        body = (
+            "  // STEALTH PATCH: never advertise automation.\n"
+            "  // Original: AutomationControlledEnabled() +\n"
+            "  // probe::ApplyAutomationOverride().\n"
+            "  return false;"
         )
-        # Find the matching closing brace and add }
-        # ... (complex patching)
-    
-    file_path.write_text(content)
-    print(f"✅ Patched {file_path}")
-PYEOF
-python3 /tmp/infobar_patch.py
+        content, ok = replace_function_body(content, marker, body)
+        if ok:
+            nav_path.write_text(content)
+            print("✅ navigator.webdriver() → false")
+        else:
+            print("⚠️  Navigator::webdriver() marker not found — "
+                  "webdriver patch skipped")
 
 # ─────────────────────────────────────────────
-# 3. Remove --enable-automation from command line
+# 2. Automation infobar → never shown
 # ─────────────────────────────────────────────
 
-cat > /tmp/args_patch.py << 'PYEOF'
-from pathlib import Path
+infobar_path = Path(
+    "chrome/browser/ui/startup/automation_infobar_delegate.cc"
+)
 
-# Patch content/browser/devtools/devtools_agent_host_impl.cc
-# to not advertise automation
+if not infobar_path.exists():
+    print("⚠️  automation_infobar_delegate.cc not found — skipped")
+else:
+    content = infobar_path.read_text()
+    if "STEALTH PATCH" in content:
+        print("⏭️  automation_infobar_delegate.cc already patched — skipped")
+    else:
+        # The static no-arg Create() is the entry the browser calls
+        # to raise the global "controlled by automation" bar. The
+        # overloaded Create(manager) keeps working, so the delegate
+        # class still compiles and links unchanged.
+        marker = "void AutomationInfoBarDelegate::Create()"
+        body = (
+            "  // STEALTH PATCH: never show the automation infobar.\n"
+            "  // Original: GlobalConfirmInfoBar::Show(\n"
+            "  //     std::move(delegate));"
+        )
+        content, ok = replace_function_body(content, marker, body)
+        if ok:
+            infobar_path.write_text(content)
+            print("✅ Automation infobar suppressed")
+        else:
+            print("⚠️  AutomationInfoBarDelegate::Create() marker not "
+                  "found — infobar patch skipped")
 
-files_to_patch = [
-    "content/browser/devtools/devtools_agent_host_impl.cc",
-    "content/common/content_switches_internal.cc",
-    "chrome/browser/chrome_browser_main.cc",
-]
+# ─────────────────────────────────────────────
+# 3. --enable-automation flag
+#
+# The jbium driver never passes --enable-automation (it launches
+# plain --remote-debugging-port CDP sessions), so nothing to strip.
+# The old "comment every matching line" approach corrupts switch
+# tables; removed. If someone launches with the flag anyway, the
+# two patches above still keep navigator.webdriver false and the
+# infobar hidden.
+# ─────────────────────────────────────────────
+print("ℹ️  --enable-automation: driver never passes it "
+      "(and the patches above neutralize it if present)")
 
-for fpath in files_to_patch:
-    p = Path(fpath)
-    if not p.exists():
-        continue
-    
-    content = p.read_text()
-    
-    # Remove any reference to enable-automation
-    if "enable-automation" in content:
-        # Comment out any lines that set automation
-        lines = content.split("\n")
-        new_lines = []
-        for line in lines:
-            if "enable-automation" in line and "STEALTH" not in line:
-                # Don't delete, just make it a no-op
-                line = f"    // STEALTH: {line}"
-            new_lines.append(line)
-        content = "\n".join(new_lines)
-        p.write_text(content)
-        print(f"✅ Patched {fpath}")
-
+print("\n✅ Automation patches complete")
+print("   ✅ navigator.webdriver = false")
+print("   ✅ Automation infobar suppressed")
 PYEOF
-python3 /tmp/args_patch.py
+
+PYTHON_BIN="$(command -v python3 2>/dev/null || command -v python 2>/dev/null)"
+"$PYTHON_BIN" /tmp/automation_patch.py

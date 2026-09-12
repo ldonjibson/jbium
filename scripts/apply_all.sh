@@ -1,11 +1,14 @@
 #!/bin/bash
-# /root/jbium/patches/apply_all.sh
+# scripts/apply_all.sh
 # Apply all patches in order
 
 set -euo pipefail
 
-PATCHES_DIR="/root/jbium/patches"
-cd /root/jbium/chromium/src
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATCHES_DIR="$SCRIPT_DIR/../patches"
+
+export CHROMIUM_SRC="${CHROMIUM_SRC:-$HOME/jbium/chromium/src}"
+cd "$CHROMIUM_SRC"
 
 echo "════════════════════════════════════════════"
 echo "  Applying Stealth Patches"
