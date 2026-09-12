@@ -68,7 +68,7 @@ TOUCHED_FILES=(
     "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.cc"
 
     # 009_plugins
-    "third_party/blink/renderer/core/frame/dom_plugin_array.cc"
+    "third_party/blink/renderer/modules/plugins/dom_plugin_array.cc"
     "third_party/blink/renderer/core/frame/dom_mime_type_array.cc"
 
     # 010_misc

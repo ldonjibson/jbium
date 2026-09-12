@@ -230,6 +230,18 @@ log "Step 5b/9: Re-syncing dependencies to match pinned version..."
 gclient sync --nohooks --no-history -D 2>&1 | tee -a "$LOG" | tail -20
 ok "Dependencies synced to $CHROMIUM_VERSION"
 
+# Some DEPS "hooks" entries extract a tarball keyed by a .sha1 pointer
+# file (third_party/node/node_modules being the one caught live) and
+# apparently don't reliably detect "already-extracted content doesn't
+# match the current .sha1" — they were populated by the original
+# fetch's pre-pin hooks run and never got refreshed, later failing
+# ninja with a plain "Cannot find module" deep inside a build action
+# rather than anything that looks like a dependency problem. Force a
+# clean re-extraction rather than trust the existing directory.
+if [ -f third_party/node/node_modules.tar.gz.sha1 ]; then
+    rm -rf third_party/node/node_modules
+fi
+
 # ───────────────────────────────────────────────────────────────
 # 6. Run hooks (downloads third-party deps)
 # ───────────────────────────────────────────────────────────────

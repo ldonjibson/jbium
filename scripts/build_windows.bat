@@ -94,6 +94,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Some DEPS "hooks" entries extract a tarball keyed by a .sha1
+REM pointer file (third_party/node/node_modules being the one caught
+REM live on Linux) and don't reliably detect "already-extracted
+REM content doesn't match the current .sha1" — populated by the
+REM original fetch's pre-pin hooks run, never refreshed, later
+REM failing ninja deep inside a build action ("Cannot find module
+REM ...") rather than anything that looks like a dependency problem.
+if exist third_party\node\node_modules.tar.gz.sha1 (
+    rmdir /s /q third_party\node\node_modules 2>nul
+)
+
 echo   ✅ Source ready
 
 REM ── Step 3: Run hooks ──

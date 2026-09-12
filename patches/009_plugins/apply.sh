@@ -89,7 +89,7 @@ def replace_function_body(content, marker, new_body):
 
 
 plugins_path = Path(
-    "third_party/blink/renderer/core/frame/dom_plugin_array.cc"
+    "third_party/blink/renderer/modules/plugins/dom_plugin_array.cc"
 )
 
 if not plugins_path.exists():

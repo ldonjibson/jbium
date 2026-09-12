@@ -137,7 +137,7 @@ check_patch "008 Accept-Language header" \
 echo ""
 echo "009: Plugin Consistency"
 check_patch "009 DOMPluginArray::length pinned" \
-    "third_party/blink/renderer/core/frame/dom_plugin_array.cc" \
+    "third_party/blink/renderer/modules/plugins/dom_plugin_array.cc" \
     "STEALTH PATCH"
 
 echo ""

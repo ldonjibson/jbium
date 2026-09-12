@@ -116,6 +116,18 @@ if [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "jbium-$CHROMIUM_VERSIO
     # the older "whitelist" name, and gn gen fails outright.
     log "  Re-syncing dependencies to match pinned version..."
     gclient sync --nohooks --no-history -D
+
+    # Some DEPS "hooks" entries extract a tarball keyed by a .sha1
+    # pointer file (third_party/node/node_modules being the one caught
+    # live) and don't reliably detect "already-extracted content
+    # doesn't match the current .sha1" — populated by the original
+    # fetch's pre-pin hooks run, never refreshed, later failing ninja
+    # deep inside a build action ("Cannot find module ...") rather
+    # than anything that looks like a dependency problem. Force a
+    # clean re-extraction rather than trust the existing directory.
+    if [ -f third_party/node/node_modules.tar.gz.sha1 ]; then
+        rm -rf third_party/node/node_modules
+    fi
 fi
 
 ok "Source ready ($(cat chrome/VERSION | head -4 | tr '\n' '.' | sed 's/\.$//'))"
