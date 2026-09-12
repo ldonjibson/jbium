@@ -361,7 +361,14 @@ enable_google_now = false
 enable_voice_search = false
 enable_web_store = false
 enable_cloud_print = false
-enable_print_preview = false
+# false breaks the link (chrome/browser/BUILD.gn only includes
+# printing/prefs_util.cc — which defines printing::ShouldPrintJobOop()
+# — when enable_print_preview is true, but printer_query.cc and
+# print_view_manager_base.cc call it unconditionally regardless of
+# this flag). config/args_*.gn already had this right; this copy
+# didn't. Verified live: "undefined symbol: printing::
+# ShouldPrintJobOop()" at the final chrome link.
+enable_print_preview = true
 enable_basic_printing = false
 enable_media_router = false
 enable_dial_media_route_provider = false
