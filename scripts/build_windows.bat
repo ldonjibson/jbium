@@ -40,8 +40,10 @@ set GYP_MSVS_VERSION=2022
 
 REM A freshly cloned depot_tools hasn't bootstrapped its vendored
 REM python3 toolchain yet — fetch/gclient fail with "python3_bin_reldir.txt
-REM not found" until something triggers it.
-call gclient --version >nul
+REM not found" until something triggers that bootstrap. "gclient --version"
+REM does NOT trigger it (short-circuits before gclient.py's own bootstrap
+REM check) — update_depot_tools.bat does.
+call update_depot_tools
 if errorlevel 1 (
     echo   ❌ depot_tools bootstrap failed
     exit /b 1

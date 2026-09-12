@@ -44,9 +44,11 @@ fi
 export PATH="$HOME/depot_tools:$PATH"
 
 # A freshly cloned depot_tools hasn't bootstrapped its vendored
-# python3/vpython3 toolchain yet — `fetch`/`gclient` fail with
-# "python3_bin_reldir.txt not found" until something triggers it.
-gclient --version >/dev/null
+# python3/vpython3 toolchain yet — `fetch`/`gclient sync` fail with
+# "python3_bin_reldir.txt not found" until something triggers that
+# bootstrap. `gclient --version` does NOT trigger it (it short-circuits
+# before gclient.py's own bootstrap check) — update_depot_tools does.
+update_depot_tools
 
 ok "Prerequisites OK"
 

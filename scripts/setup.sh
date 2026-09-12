@@ -129,10 +129,13 @@ echo 'export DEPOT_TOOLS_METRICS=0' >> /root/.bashrc
 echo 'export DEPOT_TOOLS_UPDATE=0' >> /root/.bashrc
 
 # A freshly cloned depot_tools hasn't bootstrapped its vendored
-# python3/vpython3 toolchain yet — `fetch`/`gclient` fail with
+# python3/vpython3 toolchain yet — `fetch`/`gclient sync` fail with
 # "python3_bin_reldir.txt not found" until something triggers that
-# bootstrap. Do it now, once, before anything else touches depot_tools.
-gclient --version >/dev/null
+# bootstrap. `gclient --version` does NOT trigger it (it short-circuits
+# before gclient.py's own bootstrap check, which only real subcommands
+# like sync/fetch reach) — update_depot_tools is depot_tools' own
+# dedicated script for this and always runs it.
+update_depot_tools
 
 ok "depot_tools installed at /opt/depot_tools"
 
