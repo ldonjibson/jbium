@@ -246,26 +246,20 @@ else:
         )
 
         # GetImage(): snapshot for getImageData / drawImage(canvas) /
-        # HTMLCanvasElement::Source(). Original body preserved below,
-        # with every return wrapped in the no-op-unless-enabled spoof.
+        # HTMLCanvasElement::Source(). Verified against the actually
+        # pinned Chromium tree — original body is just IsPaintable()
+        # + NewImageSnapshot(); the hibernation/shared_image_provider_
+        # machinery below (kept for snapshot_body's sibling target)
+        # belongs to a much newer Chromium's rewrite of this class and
+        # doesn't exist here at all, so don't reconstruct it from
+        # memory — preserve the real body and only wrap its return.
         getimage_body = (
-            "  if (IsHibernating()) {\n"
-            "    return stealth::CanvasNoise::MaybeSpoofSnapshot(\n"
-            "        UnacceleratedStaticBitmapImage::Create(\n"
-            "            GetHibernationHandler()->GetImage()));\n"
-            "  }\n"
-            "\n"
-            "  if (!IsResourceProviderValid()) {\n"
+            "  if (!IsPaintable()) {\n"
             "    return nullptr;\n"
             "  }\n"
-            "\n"
-            "  FlushCanvas(FlushReason::kOther);\n"
-            "  if (shared_image_provider_) {\n"
-            "    return stealth::CanvasNoise::MaybeSpoofSnapshot(\n"
-            "        shared_image_provider_->Snapshot());\n"
-            "  }\n"
             "  return stealth::CanvasNoise::MaybeSpoofSnapshot(\n"
-            "      bitmap_provider_->Snapshot());"
+            "      canvas()->GetCanvas2DLayerBridge()->NewImageSnapshot(\n"
+            "          reason));"
         )
 
         # PaintRenderingResultsToSnapshot(): the toDataURL/toBlob path.
