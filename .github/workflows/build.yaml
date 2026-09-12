@@ -44,7 +44,7 @@ jobs:
       - name: Apply patches
         run: |
           cd ~/jbium/chromium/src
-          bash patches/apply_all.sh
+          bash scripts/apply_all.sh
       
       - name: Build
         run: |
@@ -131,7 +131,7 @@ jobs:
       - name: Apply patches
         run: |
           cd ~/jbium/chromium/src
-          bash patches/apply_all.sh
+          bash scripts/apply_all.sh
       
       - name: Build
         run: |

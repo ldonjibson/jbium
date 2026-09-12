@@ -140,7 +140,7 @@ gn gen out/Release
 ### Step 7: Apply Patches
 
 ```bash
-bash patches/apply_all.sh
+bash scripts/apply_all.sh
 ```
 
 ### Step 8: Build
@@ -161,7 +161,7 @@ Patches are numbered scripts that modify Chromium source code.
 
 ```bash
 # Apply ALL patches
-bash patches/apply_all.sh
+bash scripts/apply_all.sh
 
 # Apply specific patch
 bash patches/001_automation/apply.sh
@@ -240,7 +240,7 @@ sudo swapon /swapfile
 Some patches may conflict with Chromium updates. Check which patch failed:
 
 ```bash
-bash patches/apply_all.sh 2>&1 | grep -i "error"
+bash scripts/apply_all.sh 2>&1 | grep -i "error"
 ```
 
 Revert the problematic patch:

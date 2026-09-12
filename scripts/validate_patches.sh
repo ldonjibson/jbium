@@ -148,6 +148,13 @@ check_patch "010 battery getters spoofed" \
     "third_party/blink/renderer/modules/battery/battery_manager.cc" \
     "stealth::BatterySpoof"
 
+echo ""
+echo "011: AudioContext Noise — helper-only, not wired up (expected)"
+check_header "011 stealth_audio_noise.h" \
+    "third_party/blink/renderer/platform/stealth/stealth_audio_noise.h"
+echo "  ℹ️  No source file check here on purpose: nothing consumes this"
+echo "     header yet — see patches/011_audio/apply.sh for why."
+
 # ─────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════════════"

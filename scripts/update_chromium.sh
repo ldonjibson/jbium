@@ -45,7 +45,7 @@ gclient runhooks
 
 # Re-apply patches
 echo "  Re-applying patches..."
-bash "$SCRIPT_DIR/../patches/apply_all.sh"
+bash "$SCRIPT_DIR/apply_all.sh"
 
 echo ""
 echo "══════════════════════════════════════════════════════════"

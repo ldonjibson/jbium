@@ -120,16 +120,26 @@ class Jbium:
         headless: bool = False,
         fingerprint_profile: Optional[str] = None,
         geoip_override: Optional[Dict] = None,
+        extensions: Optional[List[str]] = None,
+        fingerprint_overrides: Optional[Dict[str, str]] = None,
     ) -> StealthSession:
         """
         Launch stealth browser with complete configuration.
-        
+
         Args:
             proxy_url: Proxy URL (http://user:pass@host:port)
             headless: Run without UI (false recommended for DataDome)
             fingerprint_profile: Optional specific device template name
             geoip_override: Optional manual GeoIP data
-            
+            extensions: Optional list of unpacked extension directory paths
+                to load at startup. Chrome extensions are unreliable under
+                --headless=new, so these are ignored (with a warning) when
+                headless=True rather than silently loading nothing.
+            fingerprint_overrides: Optional STEALTH_* env var overrides,
+                applied after the generated profile — e.g.
+                {"STEALTH_GPU_VENDOR": "Custom Vendor Inc."} to force one
+                property without hand-building a whole device template.
+
         Returns:
             StealthSession with all configuration
         """
@@ -164,7 +174,23 @@ class Jbium:
         env_vars = self._generate_env_vars(
             device_profile, geo_profile, proxy_url
         )
-        
+
+        # Explicit per-property overrides win over the generated profile —
+        # applied last, after every STEALTH_* default is already set, so a
+        # caller can force one property without regenerating a whole
+        # device profile (e.g. fingerprint_overrides={"STEALTH_GPU_VENDOR":
+        # "Custom Vendor Inc."}).
+        if fingerprint_overrides:
+            env_vars.update(fingerprint_overrides)
+
+        if extensions and headless:
+            logger.warning(
+                "  extensions requested but headless=True — Chrome "
+                "extensions are unreliable under --headless=new and will "
+                "not be loaded"
+            )
+            extensions = None
+
         # Step 5: Launch browser
         session = StealthSession(
             proxy_url=proxy_url,
@@ -175,7 +201,7 @@ class Jbium:
             session_id=f"session_{int(time.time() * 1000)}",
             created_at=time.time(),
         )
-        
+
         self._session = session
         self._browser_process = await self._spawn_browser(
             proxy_url=proxy_url,
@@ -183,6 +209,7 @@ class Jbium:
             env_vars=env_vars,
             device_profile=device_profile,
             geo_profile=geo_profile,
+            extensions=extensions,
         )
         
         # Step 6: Wait for browser to be ready
@@ -503,26 +530,36 @@ class Jbium:
         env_vars: Dict[str, str],
         device_profile: DeviceProfile,
         geo_profile: GeoProfile,
+        extensions: Optional[List[str]] = None,
     ) -> subprocess.Popen:
         """Launch the stealth Chromium process"""
-        
+
         # Build command line args
         args = [self.browser_path]
-        
+
         # User-Agent
         args.append(f"--user-agent={device_profile.user_agent}")
-        
+
         # Window size (use device screen size)
         if not headless:
             args.append(f"--window-size={device_profile.screen_width},{device_profile.screen_height}")
-        
+
         # Headless (careful — use our custom headless mode)
         if headless:
             args.append("--headless=new")  # New headless mode (less detectable)
             args.append("--disable-gpu")
-        
+
         # Proxy
         args.append(f"--proxy-server={proxy_url}")
+
+        # Extensions — both flags are needed together: --load-extension
+        # alone is silently ignored under Chrome's automation-controlled
+        # startup path unless paired with --disable-extensions-except
+        # naming the same directories.
+        if extensions:
+            paths = ",".join(str(Path(p).resolve()) for p in extensions)
+            args.append(f"--disable-extensions-except={paths}")
+            args.append(f"--load-extension={paths}")
         
         # User data directory (fresh) — tempfile.gettempdir() resolves to
         # %TEMP% on Windows and /tmp on Linux/macOS, unlike a hardcoded

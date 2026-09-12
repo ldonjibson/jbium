@@ -286,7 +286,7 @@ class DeviceGenerator:
         """Pick a Chrome version weighted by market share"""
         
         versions = self.templates.get("chrome_versions", [
-            {"major": 120, "minor": 0, "build": 6099, "patch": "109", "weight": 1.0}
+            {"major": 120, "minor": 0, "build": 6099, "patch": "224", "weight": 1.0}
         ])
         
         weights = [v.get("weight", 1.0) for v in versions]
