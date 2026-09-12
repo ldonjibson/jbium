@@ -38,6 +38,15 @@ set PATH=%DEPOT_TOOLS_DIR%;%PATH%
 set DEPOT_TOOLS_WIN_TOOLCHAIN=0
 set GYP_MSVS_VERSION=2022
 
+REM A freshly cloned depot_tools hasn't bootstrapped its vendored
+REM python3 toolchain yet — fetch/gclient fail with "python3_bin_reldir.txt
+REM not found" until something triggers it.
+call gclient --version >nul
+if errorlevel 1 (
+    echo   ❌ depot_tools bootstrap failed
+    exit /b 1
+)
+
 echo   ✅ Prerequisites OK
 
 REM ── Step 2: Fetch source ──

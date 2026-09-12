@@ -51,6 +51,12 @@ if [ ! -d "$HOME/depot_tools" ]; then
 fi
 
 export PATH="$HOME/depot_tools:$PATH"
+
+# A freshly cloned depot_tools hasn't bootstrapped its vendored
+# python3/vpython3 toolchain yet — `fetch`/`gclient` fail with
+# "python3_bin_reldir.txt not found" until something triggers it.
+gclient --version >/dev/null
+
 ok "Prerequisites OK"
 
 # ── Step 2: Fetch source ──

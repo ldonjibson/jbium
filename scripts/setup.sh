@@ -128,6 +128,12 @@ export PATH="/opt/depot_tools:$PATH"
 echo 'export DEPOT_TOOLS_METRICS=0' >> /root/.bashrc
 echo 'export DEPOT_TOOLS_UPDATE=0' >> /root/.bashrc
 
+# A freshly cloned depot_tools hasn't bootstrapped its vendored
+# python3/vpython3 toolchain yet — `fetch`/`gclient` fail with
+# "python3_bin_reldir.txt not found" until something triggers that
+# bootstrap. Do it now, once, before anything else touches depot_tools.
+gclient --version >/dev/null
+
 ok "depot_tools installed at /opt/depot_tools"
 
 # ───────────────────────────────────────────────────────────────
