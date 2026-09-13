@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jbium"
+dynamic = ["version"]
+description = "Driver for the jbium stealth Chromium browser"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+dependencies = [
+    "websockets>=12.0",   # CDP communication
+    "aiohttp>=3.9.0",     # proxy IP detection, download progress
+    "pyyaml>=6.0",        # config/settings.yaml parsing
+]
+
+[project.optional-dependencies]
+# MaxMind GeoLite2 local database reader — jbium.geoip_resolver already
+# treats this as optional at the code level (falls back to a smart
+# default profile if it's missing), so this extra just controls
+# whether the accurate local lookup path is available.
+geo = ["geoip2>=4.7.0"]
+
+# Contributor/CI tooling, not needed to just use the package.
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+jbium = "jbium.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "jbium.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+jbium = [
+    "config/*.json",
+    "config/*.yaml",
+    "fonts/*.xml",
+    "fonts/linux/*.json",
+    "fonts/macos/*.json",
+    "fonts/windows/*.json",
+]
