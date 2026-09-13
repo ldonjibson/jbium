@@ -118,7 +118,8 @@ class Jbium:
         self._browser_process: Optional[subprocess.Popen] = None
         self._ws_connection = None
         self._pages: List[Dict] = []
-        
+        self._proxy_auth_extension_dir: Optional[str] = None
+
         logger.info(f"Jbium initialized")
         logger.info(f"  Browser: {self.browser_path}")
         logger.info(f"  Config: {config_path}")
@@ -317,13 +318,19 @@ class Jbium:
                 self._browser_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._browser_process.kill()
-        
+
+        # Remove the temporary proxy-auth extension directory, if one was
+        # generated for this session (contains the proxy password on disk).
+        if self._proxy_auth_extension_dir:
+            shutil.rmtree(self._proxy_auth_extension_dir, ignore_errors=True)
+            self._proxy_auth_extension_dir = None
+
         logger.info("  ✅ Browser shut down")
-    
+
     # ─────────────────────────────────────────────
     # Context manager support
     # ─────────────────────────────────────────────
-    
+
     async def __aenter__(self):
         return self
     
@@ -567,13 +574,51 @@ class Jbium:
             args.append("--headless=new")  # New headless mode (less detectable)
             args.append("--disable-gpu")
 
-        # Proxy
-        args.append(f"--proxy-server={proxy_url}")
+        # Proxy — Chrome's --proxy-server flag takes a bare scheme://host:port
+        # and doesn't understand embedded user:pass@ credentials; a URL with
+        # userinfo in it fails Chrome's proxy-server parsing outright and
+        # surfaces later as net::ERR_NO_SUPPORTED_PROXIES on first navigation
+        # (found live: launch() and new_page() both succeed since neither
+        # touches the proxy, only goto() actually routes traffic through it).
+        # Credentials for an authenticated proxy have to be supplied a
+        # different way — see _build_proxy_auth_extension below.
+        parsed_proxy = urlsplit(proxy_url)
+        if parsed_proxy.username:
+            stripped_netloc = parsed_proxy.hostname or ""
+            if parsed_proxy.port:
+                stripped_netloc += f":{parsed_proxy.port}"
+            proxy_server_value = urlunsplit((
+                parsed_proxy.scheme, stripped_netloc, parsed_proxy.path,
+                parsed_proxy.query, parsed_proxy.fragment,
+            ))
+        else:
+            proxy_server_value = proxy_url
+        args.append(f"--proxy-server={proxy_server_value}")
 
         # Extensions — both flags are needed together: --load-extension
         # alone is silently ignored under Chrome's automation-controlled
         # startup path unless paired with --disable-extensions-except
         # naming the same directories.
+        extensions = list(extensions) if extensions else []
+
+        if parsed_proxy.username:
+            if headless:
+                # --headless=new loads MV2 extensions unreliably (same
+                # reason launch() already refuses caller-supplied
+                # extensions under headless), so an authenticated proxy
+                # can silently fail to authenticate here. Surfacing that
+                # now is more useful than a confusing ERR_TUNNEL/407 later.
+                logger.warning(
+                    "  Proxy has embedded credentials but headless=True — "
+                    "the auth extension is unreliable under --headless=new "
+                    "and the proxy may fail to authenticate"
+                )
+            auth_extension_dir = self._build_proxy_auth_extension(
+                parsed_proxy.username, parsed_proxy.password or ""
+            )
+            self._proxy_auth_extension_dir = auth_extension_dir
+            extensions.append(auth_extension_dir)
+
         if extensions:
             paths = ",".join(str(Path(p).resolve()) for p in extensions)
             args.append(f"--disable-extensions-except={paths}")
@@ -613,9 +658,62 @@ class Jbium:
         
         # Store debug port
         self._debug_port = debug_port
-        
+
         return process
-    
+
+    def _build_proxy_auth_extension(self, username: str, password: str) -> str:
+        """
+        Write a temporary unpacked MV2 extension that answers the proxy's
+        Basic-auth challenge via chrome.webRequest.onAuthRequired.
+
+        Chrome has no --proxy-server flag support for embedded credentials
+        (see _spawn_browser), and CDP's own Fetch.authRequired handling
+        would require a concurrent event-listening loop this driver's
+        current request/response CDP transport doesn't have — every
+        _command()/_cdp_command() call blocks synchronously waiting for a
+        matching response id, so an authRequired event arriving mid-wait
+        would just be silently discarded, deadlocking the proxy handshake.
+        A background-page extension sidesteps that entirely: Chrome
+        resolves the challenge internally before any page-level CDP
+        traffic is involved. MV2 (not MV3) is required — MV3 restricts
+        blocking webRequest to policy-installed extensions, and Chrome
+        120 still loads unpacked MV2 extensions given via --load-extension.
+        """
+
+        ext_dir = Path(tempfile.gettempdir()) / f"jbium-proxy-auth-{int(time.time() * 1000)}"
+        ext_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest = {
+            "manifest_version": 2,
+            "name": "jbium-proxy-auth",
+            "version": "1.0",
+            "permissions": ["webRequest", "webRequestBlocking", "<all_urls>"],
+            "background": {"scripts": ["background.js"], "persistent": True},
+        }
+        (ext_dir / "manifest.json").write_text(json.dumps(manifest))
+
+        # json.dumps escapes quotes/backslashes so the credentials can't
+        # break out of the string literals they're embedded into below.
+        background_js = f"""
+chrome.webRequest.onAuthRequired.addListener(
+    function(details, callback) {{
+        callback({{
+            authCredentials: {{
+                username: {json.dumps(username)},
+                password: {json.dumps(password)}
+            }}
+        }});
+    }},
+    {{urls: ["<all_urls>"]}},
+    ["blocking"]
+);
+"""
+        (ext_dir / "background.js").write_text(background_js)
+
+        logger.info("  Generated proxy-auth extension (credentials not passed on the command line)")
+
+        return str(ext_dir)
+
     async def _wait_for_browser_ready(self, timeout: int = 30):
         """Wait for browser to respond to CDP"""
         
