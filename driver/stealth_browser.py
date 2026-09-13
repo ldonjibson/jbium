@@ -683,15 +683,24 @@ class Jbium:
 
         # json.dumps escapes quotes/backslashes so the credentials can't
         # break out of the string literals they're embedded into below.
+        #
+        # extraInfoSpec is ["blocking"], not ["asyncBlocking"] — that means
+        # the listener must return its BlockingResponse synchronously. A
+        # callback-based signature (function(details, callback) {...}) is
+        # only valid under "asyncBlocking"; under plain "blocking" the
+        # callback argument is undefined, so invoking it throws inside the
+        # listener, Chrome treats the event as unhandled, no credentials
+        # are ever supplied, and the proxy handshake fails with
+        # net::ERR_INVALID_AUTH_CREDENTIALS (caught live testing this).
         background_js = f"""
 chrome.webRequest.onAuthRequired.addListener(
-    function(details, callback) {{
-        callback({{
+    function(details) {{
+        return {{
             authCredentials: {{
                 username: {json.dumps(username)},
                 password: {json.dumps(password)}
             }}
-        }});
+        }};
     }},
     {{urls: ["<all_urls>"]}},
     ["blocking"]
