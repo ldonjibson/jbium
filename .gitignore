@@ -1,14 +1,19 @@
-
-### 2. .gitignore
-
-```gitignore
 # ═══════════════════════════════════════════
 # Jbium — Git Ignore
 # ═══════════════════════════════════════════
 
 # ── Chromium source (too large, download separately) ──
+# chromium/ already covers chromium/src/ entirely — a separate bare
+# "src/" pattern used to also match ANY directory named src/ anywhere
+# in the repo (e.g. packaging/src/, a legitimate Python src-layout
+# package), which is why it's gone. Same idea below for jbium/
+# jbium.exe: those matched any file or directory with that literal
+# name anywhere (this project's own name recurs a lot as a legitimate
+# path — launcher/jbium and packaging/src/jbium/ were both silently
+# never tracked because of it); the actual compiled binary always
+# lands inside chromium/, dist/, builds/, or packages/ below, which
+# are already ignored, so the bare patterns added no real coverage.
 chromium/
-src/
 out/
 third_party/
 
@@ -37,8 +42,6 @@ packages/
 *.dat
 chrome
 chrome.exe
-jbium
-jbium.exe
 
 # ── Font files (downloaded by script) ──
 fonts/windows/*.ttf

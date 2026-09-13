@@ -1,0 +1,369 @@
+{
+  "$comment": "Device fingerprint templates. These are based on real hardware configurations found in the wild. The generator picks one based on GeoIP OS distribution.",
+  "templates": {
+    "win_mainstream_laptop": {
+      "os": "Windows 11",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "15.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 4, "model": "Intel Core i5-1235U"},
+        {"cores": 8, "model": "Intel Core i7-1255U"},
+        {"cores": 6, "model": "AMD Ryzen 5 5500U"},
+        {"cores": 8, "model": "AMD Ryzen 7 5800U"}
+      ],
+      "device_memory": [4, 8, 8, 16],
+      "gpu_options": [
+        {
+          "vendor": "Intel Inc.",
+          "renderer": "Intel(R) Iris(R) Xe Graphics"
+        },
+        {
+          "vendor": "Intel Inc.",
+          "renderer": "Intel(R) UHD Graphics"
+        },
+        {
+          "vendor": "AMD",
+          "renderer": "AMD Radeon(TM) Graphics"
+        }
+      ],
+      "screen_options": [
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
+        {"w": 1366, "h": 768, "dpr": 1.0, "rate": 60},
+        {"w": 1536, "h": 864, "dpr": 1.25, "rate": 60},
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 144},
+        {"w": 1600, "h": 900, "dpr": 1.0, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": false,
+      "pen": false,
+      "probability": 0.24,
+      "compatible_regions": ["all"]
+    },
+    "win_gaming_desktop": {
+      "os": "Windows 11",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "15.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 16, "model": "AMD Ryzen 9 7950X"},
+        {"cores": 12, "model": "Intel Core i7-13700K"},
+        {"cores": 24, "model": "AMD Ryzen 9 7900X"},
+        {"cores": 20, "model": "Intel Core i9-13900K"}
+      ],
+      "device_memory": [16, 32, 32],
+      "gpu_options": [
+        {
+          "vendor": "NVIDIA Corporation",
+          "renderer": "NVIDIA GeForce RTX 4070/PCIe/SSE2"
+        },
+        {
+          "vendor": "NVIDIA Corporation",
+          "renderer": "NVIDIA GeForce RTX 3080/PCIe/SSE2"
+        },
+        {
+          "vendor": "NVIDIA Corporation",
+          "renderer": "NVIDIA GeForce RTX 4080/PCIe/SSE2"
+        },
+        {
+          "vendor": "AMD",
+          "renderer": "AMD Radeon RX 7900 XT"
+        }
+      ],
+      "screen_options": [
+        {"w": 2560, "h": 1440, "dpr": 1.0, "rate": 144},
+        {"w": 2560, "h": 1440, "dpr": 1.0, "rate": 165},
+        {"w": 3840, "h": 2160, "dpr": 1.0, "rate": 120},
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 240}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": false,
+      "pen": false,
+      "probability": 0.07,
+      "compatible_regions": ["all"]
+    },
+    "win_business_laptop": {
+      "os": "Windows 11",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "15.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 8, "model": "Intel Core i5-1345U"},
+        {"cores": 10, "model": "Intel Core i7-1365U"},
+        {"cores": 6, "model": "Intel Core i5-1335U"}
+      ],
+      "device_memory": [8, 16, 16],
+      "gpu_options": [
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"},
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics 620"}
+      ],
+      "screen_options": [
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
+        {"w": 1920, "h": 1200, "dpr": 1.0, "rate": 60},
+        {"w": 2256, "h": 1504, "dpr": 1.5, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": false,
+      "pen": false,
+      "probability": 0.12,
+      "compatible_regions": ["all"]
+    },
+    "win_2in1_touch": {
+      "os": "Windows 11",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "15.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 8, "model": "Intel Core i5-1235U"},
+        {"cores": 4, "model": "Intel Core i3-1215U"}
+      ],
+      "device_memory": [8, 8, 16],
+      "gpu_options": [
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"},
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics"}
+      ],
+      "screen_options": [
+        {"w": 1920, "h": 1280, "dpr": 1.5, "rate": 60},
+        {"w": 2160, "h": 1440, "dpr": 2.0, "rate": 60},
+        {"w": 1536, "h": 1024, "dpr": 1.5, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": true,
+      "pen": true,
+      "probability": 0.05,
+      "compatible_regions": ["all"]
+    },
+    "win_older_desktop": {
+      "os": "Windows 10",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "10.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 4, "model": "Intel Core i5-8400"},
+        {"cores": 6, "model": "Intel Core i5-9600K"},
+        {"cores": 8, "model": "AMD Ryzen 7 2700X"}
+      ],
+      "device_memory": [8, 16, 16],
+      "gpu_options": [
+        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce GTX 1660/PCIe/SSE2"},
+        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce GTX 1060/PCIe/SSE2"},
+        {"vendor": "AMD", "renderer": "AMD Radeon RX 580"}
+      ],
+      "screen_options": [
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
+        {"w": 1680, "h": 1050, "dpr": 1.0, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": false,
+      "pen": false,
+      "probability": 0.08,
+      "compatible_regions": ["all"]
+    },
+    "macbook_pro": {
+      "os": "macOS Sonoma",
+      "platform": "MacIntel",
+      "ua_platform": "macOS",
+      "ua_platform_version": "14.1.0",
+      "architecture": "arm",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 8, "model": "Apple M1 Pro"},
+        {"cores": 10, "model": "Apple M1 Pro"},
+        {"cores": 8, "model": "Apple M2 Pro"}
+      ],
+      "device_memory": [8, 16, 16],
+      "gpu_options": [
+        {"vendor": "Apple", "renderer": "Apple M1 Pro"},
+        {"vendor": "Apple", "renderer": "Apple M2"}
+      ],
+      "screen_options": [
+        {"w": 1512, "h": 982, "dpr": 2.0, "rate": 120},
+        {"w": 1728, "h": 1117, "dpr": 2.0, "rate": 120},
+        {"w": 1920, "h": 1200, "dpr": 2.0, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 25},
+      "touch": false,
+      "pen": false,
+      "probability": 0.09,
+      "compatible_regions": ["US", "GB", "DE", "CA", "AU"]
+    },
+    "macbook_pro_m3": {
+      "os": "macOS Sonoma",
+      "platform": "MacIntel",
+      "ua_platform": "macOS",
+      "ua_platform_version": "14.2.0",
+      "architecture": "arm",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 8, "model": "Apple M3"},
+        {"cores": 11, "model": "Apple M3 Pro"},
+        {"cores": 12, "model": "Apple M3 Pro"}
+      ],
+      "device_memory": [8, 16, 16, 18],
+      "gpu_options": [
+        {"vendor": "Apple", "renderer": "Apple M3"},
+        {"vendor": "Apple", "renderer": "Apple M3 Pro"}
+      ],
+      "screen_options": [
+        {"w": 1512, "h": 982, "dpr": 2.0, "rate": 120},
+        {"w": 1728, "h": 1117, "dpr": 2.0, "rate": 120}
+      ],
+      "available_offset": {"w": 0, "h": 25},
+      "touch": false,
+      "pen": false,
+      "probability": 0.06,
+      "compatible_regions": ["US", "GB", "DE", "CA", "AU", "JP"]
+    },
+    "macbook_air": {
+      "os": "macOS Sonoma",
+      "platform": "MacIntel",
+      "ua_platform": "macOS",
+      "ua_platform_version": "14.1.0",
+      "architecture": "arm",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 8, "model": "Apple M1"},
+        {"cores": 8, "model": "Apple M2"}
+      ],
+      "device_memory": [8, 8, 16],
+      "gpu_options": [
+        {"vendor": "Apple", "renderer": "Apple M1"},
+        {"vendor": "Apple", "renderer": "Apple M2"}
+      ],
+      "screen_options": [
+        {"w": 1440, "h": 900, "dpr": 2.0, "rate": 60},
+        {"w": 1470, "h": 956, "dpr": 2.0, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 25},
+      "touch": false,
+      "pen": false,
+      "probability": 0.09,
+      "compatible_regions": ["US", "GB", "DE", "CA", "AU", "JP", "KR"]
+    },
+    "win_budget_laptop": {
+      "os": "Windows 10",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "10.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 2, "model": "Intel Celeron N4020"},
+        {"cores": 4, "model": "Intel Pentium Silver N5030"},
+        {"cores": 4, "model": "Intel Core i3-1005G1"}
+      ],
+      "device_memory": [4, 8, 8],
+      "gpu_options": [
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics 600"},
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics 605"}
+      ],
+      "screen_options": [
+        {"w": 1366, "h": 768, "dpr": 1.0, "rate": 60},
+        {"w": 1280, "h": 720, "dpr": 1.0, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": false,
+      "pen": false,
+      "probability": 0.15,
+      "compatible_regions": ["IN", "BR", "ID", "VN", "TH", "PH", "MX"]
+    },
+    "linux_desktop": {
+      "os": "Ubuntu 22.04",
+      "platform": "Linux x86_64",
+      "ua_platform": "Linux",
+      "ua_platform_version": "5.15.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 8, "model": "AMD Ryzen 7 5800X"},
+        {"cores": 12, "model": "Intel Core i7-12700K"},
+        {"cores": 6, "model": "AMD Ryzen 5 5600X"}
+      ],
+      "device_memory": [16, 32, 32],
+      "gpu_options": [
+        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce RTX 3060/PCIe/SSE2"},
+        {"vendor": "AMD", "renderer": "AMD Radeon RX 6700 XT"}
+      ],
+      "screen_options": [
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
+        {"w": 2560, "h": 1440, "dpr": 1.0, "rate": 144}
+      ],
+      "available_offset": {"w": 0, "h": 28},
+      "touch": false,
+      "pen": false,
+      "probability": 0.03,
+      "compatible_regions": ["US", "DE", "FR", "NL", "SE", "NO", "DK", "FI"]
+    },
+    "linux_laptop": {
+      "os": "Ubuntu 22.04",
+      "platform": "Linux x86_64",
+      "ua_platform": "Linux",
+      "ua_platform_version": "5.15.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 4, "model": "Intel Core i5-1135G7"},
+        {"cores": 8, "model": "AMD Ryzen 7 4700U"}
+      ],
+      "device_memory": [8, 16],
+      "gpu_options": [
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"},
+        {"vendor": "AMD", "renderer": "AMD Radeon(TM) Graphics"}
+      ],
+      "screen_options": [
+        {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
+        {"w": 1366, "h": 768, "dpr": 1.0, "rate": 60}
+      ],
+      "available_offset": {"w": 0, "h": 28},
+      "touch": false,
+      "pen": false,
+      "probability": 0.02,
+      "compatible_regions": ["US", "DE", "FR", "NL", "SE", "NO", "DK", "FI"]
+    },
+    "win_high_res_laptop": {
+      "os": "Windows 11",
+      "platform": "Win32",
+      "ua_platform": "Windows",
+      "ua_platform_version": "15.0.0",
+      "architecture": "x86",
+      "bitness": "64",
+      "cpu_options": [
+        {"cores": 14, "model": "Intel Core i7-13700H"},
+        {"cores": 16, "model": "Intel Core i9-13900H"}
+      ],
+      "device_memory": [16, 32],
+      "gpu_options": [
+        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce RTX 4060/PCIe/SSE2"},
+        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"}
+      ],
+      "screen_options": [
+        {"w": 3840, "h": 2160, "dpr": 1.5, "rate": 60},
+        {"w": 2560, "h": 1600, "dpr": 1.25, "rate": 165}
+      ],
+      "available_offset": {"w": 0, "h": 40},
+      "touch": false,
+      "pen": false,
+      "probability": 0.09,
+      "compatible_regions": ["all"]
+    }
+  },
+  "chrome_versions": [
+    {"major": 120, "minor": 0, "build": 6099, "patch": "224", "weight": 1.0}
+  ],
+  "_chrome_versions_comment": "Deliberately a single entry, matching the ONE Chromium version these patches are actually verified against (see CHROMIUM_VERSION in scripts/setup.sh / scripts/build_linux.sh / scripts/build_macos.sh / scripts/build_windows.bat). Real Chrome major/build/patch version is visible to sites via more than navigator.userAgent (Client Hights getHighEntropyValues, feature-detection of version-gated JS APIs, internal error message text, etc.) — claiming a version that doesn't match what's actually compiled is a bigger, more mechanically detectable tell than the UA string alone suggests. Do NOT add more entries here to fake version diversity; that requires actually building and pinning additional Chromium versions (see the packaging discussion — this list must always match reality, one weighted entry per Chromium build you've actually produced).",
+  "user_agent_templates": {
+    "Windows": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_version} Safari/537.36",
+    "macOS": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_version} Safari/537.36",
+    "Linux": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_version} Safari/537.36"
+  }
+}

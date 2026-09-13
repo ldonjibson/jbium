@@ -1,0 +1,35 @@
+{
+  "$comment": "Fonts bundled for Linux native presentation. These are the fonts typically found on Ubuntu/Debian/Fedora systems.",
+  "platform": "linux",
+  "font_size_mb": 15,
+  "fonts": {
+    "noto_sans": {
+      "files": ["NotoSans-Regular.ttf", "NotoSans-Bold.ttf", "NotoSans-Italic.ttf"],
+      "substitutes_for": ["sans-serif"],
+      "metric_compatible": false,
+      "license": "SIL Open Font License 1.1",
+      "note": "Default sans-serif on modern Linux distributions"
+    },
+    "dejavu_sans": {
+      "files": ["DejaVuSans.ttf", "DejaVuSans-Bold.ttf"],
+      "substitutes_for": ["Verdana", "Geneva", "DejaVu Sans"],
+      "metric_compatible": false,
+      "license": "Bitstream Vera License",
+      "note": "Historically the most common Linux font, still widely installed"
+    },
+    "liberation_sans": {
+      "files": ["LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"],
+      "substitutes_for": ["Arial", "Helvetica"],
+      "metric_compatible": true,
+      "license": "SIL Open Font License 1.1",
+      "note": "Installed by default on most Linux distros for web compatibility"
+    },
+    "ubuntu_font": {
+      "files": ["Ubuntu-Regular.ttf", "Ubuntu-Bold.ttf", "UbuntuMono-Regular.ttf"],
+      "substitutes_for": ["Ubuntu"],
+      "metric_compatible": false,
+      "license": "Ubuntu Font License 1.0",
+      "note": "Ubuntu system font"
+    }
+  }
+}

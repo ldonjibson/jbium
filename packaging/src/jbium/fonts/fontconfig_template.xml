@@ -1,0 +1,901 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<!--
+════════════════════════════════════════════════════════════
+Jbium — Fontconfig Template
+════════════════════════════════════════════════════════════
+
+This template is used on Linux to configure font behavior
+for the stealth browser. It:
+
+1. Points to bundled fonts (portable, no system deps)
+2. Sets font rendering to match the spoofed platform
+3. Configures font substitution (Arial→Liberation Sans)
+4. Handles per-region font preferences
+5. Suppresses font enumeration leaks
+
+Usage:
+  The launcher script (stealth_browser.py) generates a
+  customized version of this file at runtime, substituting:
+  - {{FONT_DIR}}     → path to bundled fonts
+  - {{CACHE_DIR}}    → font cache directory
+  - {{PLATFORM}}     → windows_11, macos_sonoma, ubuntu
+  - {{REGION}}       → generic, japan, korea, china, arabic
+  - {{DPI}}          → screen DPI (96, 120, 144)
+
+  Generated file is placed at:
+  ~/.cache/jbium/fonts.conf
+  And FONTCONFIG_PATH is set to point to it.
+════════════════════════════════════════════════════════════
+-->
+<fontconfig>
+
+  <!-- ═════════════════════════════════════════════════
+       DIRECTORIES
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Bundled fonts (from the jbium package) -->
+  <dir>{{FONT_DIR}}</dir>
+
+  <!-- System fonts (fallback, filtered by our patches) -->
+  <dir>/usr/share/fonts</dir>
+  <dir>/usr/local/share/fonts</dir>
+  <dir>~/.fonts</dir>
+  <dir>~/.local/share/fonts</dir>
+
+  <!-- Font cache (writable location for font metadata) -->
+  <cachedir>{{CACHE_DIR}}</cachedir>
+
+
+  <!-- ═════════════════════════════════════════════════
+       COMMON CONFIGURATION
+       ═════════════════════════════════════════════════ -->
+
+  <!--
+    Disable fontconfig's own config that might interfere.
+    We want full control over what fonts are exposed.
+  -->
+  <include ignore_missing="yes">/etc/fonts/conf.d</include>
+
+
+  <!-- ═════════════════════════════════════════════════
+       FONT RENDERING
+       Matches the spoofed platform's rendering style
+       ═════════════════════════════════════════════════ -->
+
+  <!--
+    Windows renders fonts differently from Linux/macOS.
+    These settings match the target platform.
+  -->
+
+  <!-- {{PLATFORM_WINDOWS_START}} -->
+  <!-- Windows-style rendering: ClearType approximation -->
+  <match target="pattern">
+    <edit name="dpi" mode="assign">
+      <double>{{DPI}}</double>
+    </edit>
+  </match>
+
+  <!-- Windows uses subpixel RGB hinting with slight stem darkening -->
+  <match target="font">
+    <edit name="antialias" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="hinting" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="hintstyle" mode="assign">
+      <const>hintslight</const>
+    </edit>
+    <edit name="autohint" mode="assign">
+      <bool>false</bool>
+    </edit>
+    <edit name="rgba" mode="assign">
+      <const>rgb</const>
+    </edit>
+    <edit name="lcdfilter" mode="assign">
+      <const>lcddefault</const>
+    </edit>
+    <edit name="embeddedbitmap" mode="assign">
+      <bool>false</bool>
+    </edit>
+  </match>
+  <!-- {{PLATFORM_WINDOWS_END}} -->
+
+  <!-- {{PLATFORM_MACOS_START}} -->
+  <!-- macOS-style rendering: No hinting, smooth antialiasing -->
+  <!--
+  <match target="font">
+    <edit name="antialias" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="hinting" mode="assign">
+      <bool>false</bool>
+    </edit>
+    <edit name="hintstyle" mode="assign">
+      <const>hintnone</const>
+    </edit>
+    <edit name="rgba" mode="assign">
+      <const>none</const>
+    </edit>
+    <edit name="lcdfilter" mode="assign">
+      <const>lcdnone</const>
+    </edit>
+    <edit name="autohint" mode="assign">
+      <bool>false</bool>
+    </edit>
+  </match>
+  -->
+  <!-- {{PLATFORM_MACOS_END}} -->
+
+  <!-- {{PLATFORM_LINUX_START}} -->
+  <!-- Linux-native rendering: Standard Ubuntu/Debian settings -->
+  <!--
+  <match target="font">
+    <edit name="antialias" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="hinting" mode="assign">
+      <bool>true</bool>
+    </edit>
+    <edit name="hintstyle" mode="assign">
+      <const>hintslight</const>
+    </edit>
+    <edit name="rgba" mode="assign">
+      <const>rgb</const>
+    </edit>
+  </match>
+  -->
+  <!-- {{PLATFORM_LINUX_END}} -->
+
+
+  <!-- ═════════════════════════════════════════════════
+       FONT SUBSTITUTION
+       When spoofing Windows, map Mac fonts to equivalents.
+       When spoofing macOS, map Windows fonts to equivalents.
+       ═════════════════════════════════════════════════ -->
+
+  <!-- {{SPOOF_WINDOWS_START}} -->
+  <!--
+    When presenting as Windows, substitute Mac-only fonts
+    so measurements don't reveal Linux underneath.
+  -->
+
+  <!-- Mac font → Windows equivalent -->
+  <match target="pattern">
+    <test name="family"><string>Helvetica Neue</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Segoe UI</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Menlo</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Consolas</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Monaco</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Consolas</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>SF Pro Display</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Segoe UI</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>SF Pro Text</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Segoe UI</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Avenir</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Segoe UI</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Avenir Next</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Segoe UI</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Hiragino Sans</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Yu Gothic</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Hiragino Kaku Gothic ProN</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Yu Gothic</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Apple SD Gothic Neo</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Malgun Gothic</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>PingFang SC</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Microsoft YaHei</string>
+    </edit>
+  </match>
+
+  <!-- Generic font families → Windows-preferred fonts -->
+  <match target="pattern">
+    <test qual="any" name="family"><string>sans-serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Segoe UI</string>
+      <string>Arial</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Times New Roman</string>
+      <string>Cambria</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Consolas</string>
+      <string>Courier New</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>cursive</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Comic Sans MS</string>
+      <string>Segoe Script</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>fantasy</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Impact</string>
+    </edit>
+  </match>
+  <!-- {{SPOOF_WINDOWS_END}} -->
+
+
+  <!-- {{SPOOF_MACOS_START}} -->
+  <!--
+    When presenting as macOS, substitute Windows-only fonts
+    so measurements don't reveal Linux underneath.
+
+  <match target="pattern">
+    <test name="family"><string>Segoe UI</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>SF Pro Text</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Consolas</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Menlo</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Calibri</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Helvetica Neue</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Microsoft YaHei</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>PingFang SC</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Yu Gothic</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Hiragino Sans</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="family"><string>Malgun Gothic</string></test>
+    <edit name="family" mode="assign" binding="same">
+      <string>Apple SD Gothic Neo</string>
+    </edit>
+  </match>
+
+  Generic families → Mac-preferred fonts
+  <match target="pattern">
+    <test qual="any" name="family"><string>sans-serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>SF Pro Text</string>
+      <string>Helvetica Neue</string>
+      <string>Helvetica</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Times New Roman</string>
+      <string>Georgia</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Menlo</string>
+      <string>Monaco</string>
+    </edit>
+  </match>
+  -->
+  <!-- {{SPOOF_MACOS_END}} -->
+
+
+  <!-- {{SPOOF_LINUX_START}} -->
+  <!--
+    When presenting as Linux (native), use Linux-appropriate fonts.
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>sans-serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Ubuntu</string>
+      <string>Noto Sans</string>
+      <string>DejaVu Sans</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Noto Serif</string>
+      <string>DejaVu Serif</string>
+      <string>Liberation Serif</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Ubuntu Mono</string>
+      <string>Noto Sans Mono</string>
+      <string>DejaVu Sans Mono</string>
+    </edit>
+  </match>
+  -->
+  <!-- {{SPOOF_LINUX_END}} -->
+
+
+  <!-- ═════════════════════════════════════════════════
+       REGIONAL FONT CONFIGURATIONS
+       ═════════════════════════════════════════════════ -->
+
+  <!-- {{REGION_GENERIC_START}} -->
+  <!--
+    Generic region (US, UK, EU, etc.)
+    No additional CJK/Arabic fonts needed.
+    Standard Western font set.
+  -->
+  <!-- No additional configuration needed for generic regions -->
+  <!-- {{REGION_GENERIC_END}} -->
+
+  <!-- {{REGION_JAPAN_START}} -->
+  <!--
+    Japan region
+    Ensure Japanese fonts are preferred for Japanese text.
+    Font filtering patch will include JP-specific fonts.
+
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>ja</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Yu Gothic</string>
+      <string>Meiryo</string>
+      <string>MS PGothic</string>
+      <string>Noto Sans JP</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>ja</string></test>
+    <test qual="any" name="family"><string>serif</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Yu Mincho</string>
+      <string>MS PMincho</string>
+      <string>Noto Serif JP</string>
+    </edit>
+  </match>
+  -->
+  <!-- {{REGION_JAPAN_END}} -->
+
+  <!-- {{REGION_KOREA_START}} -->
+  <!--
+    Korea region
+    Ensure Korean fonts are preferred for Korean text.
+
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>ko</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Malgun Gothic</string>
+      <string>Nanum Gothic</string>
+      <string>Noto Sans KR</string>
+    </edit>
+  </match>
+  -->
+  <!-- {{REGION_KOREA_END}} -->
+
+  <!-- {{REGION_CHINA_START}} -->
+  <!--
+    China region
+    Ensure Chinese fonts are preferred for Chinese text.
+
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>zh-cn</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Microsoft YaHei</string>
+      <string>SimHei</string>
+      <string>Noto Sans SC</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>zh-tw</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Microsoft JhengHei</string>
+      <string>Noto Sans TC</string>
+    </edit>
+  </match>
+  -->
+  <!-- {{REGION_CHINA_END}} -->
+
+  <!-- {{REGION_ARABIC_START}} -->
+  <!--
+    Arabic-speaking regions
+    Ensure Arabic fonts are preferred for Arabic text.
+
+  <match target="pattern">
+    <test name="lang" compare="contains"><string>ar</string></test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>Segoe UI</string>
+      <string>Noto Sans Arabic</string>
+      <string>Noto Naskh Arabic</string>
+    </edit>
+  </match>
+  -->
+  <!-- {{REGION_ARABIC_END}} -->
+
+
+  <!-- ═════════════════════════════════════════════════
+       DPI / SCREEN SETTINGS
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Set DPI based on spoofed screen configuration -->
+  <match target="pattern">
+    <edit name="dpi" mode="assign">
+      <double>{{DPI}}</double>
+    </edit>
+  </match>
+
+  <!-- Scale factor for high-DPI displays -->
+  <!--
+    When spoofing a MacBook Retina (DPR 2.0), fonts should
+    render at the appropriate scale.
+  -->
+
+
+  <!-- ═════════════════════════════════════════════════
+       FONT WEIGHT / SLANT CORRECTION
+       Ensures consistent rendering metrics
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Bold fonts -->
+  <match target="font">
+    <test name="weight" compare="more_eq">
+      <const>bold</const>
+    </test>
+    <edit name="autohint" mode="assign">
+      <bool>false</bool>
+    </edit>
+  </match>
+
+  <!-- Italic fonts -->
+  <match target="font">
+    <test name="slant">
+      <const>italic</const>
+    </test>
+    <edit name="autohint" mode="assign">
+      <bool>false</bool>
+    </edit>
+  </match>
+
+
+  <!-- ═════════════════════════════════════════════════
+       ANTI-FINGERPRINTING
+       Reduce font enumeration surface
+       ═════════════════════════════════════════════════ -->
+
+  <!--
+    Reject requests for fonts we don't want to expose.
+    The Chromium font_filter patch handles this at the API level,
+    but this adds a secondary layer of protection at fontconfig level.
+  -->
+
+  <!-- Reject bitmap fonts (not present on modern Windows/Mac) -->
+  <selectfont>
+    <rejectfont>
+      <pattern>
+        <patelt name="scalable"><bool>false</bool></patelt>
+      </pattern>
+    </rejectfont>
+  </selectfont>
+
+  <!-- Reject Type 1 fonts (legacy, rarely installed) -->
+  <selectfont>
+    <rejectfont>
+      <pattern>
+        <patelt name="fontformat"><string>Type 1</string></patelt>
+      </pattern>
+    </rejectfont>
+  </selectfont>
+
+  <!-- Reject fonts with suspicious names (test/debug fonts) -->
+  <!--
+  <selectfont>
+    <rejectfont>
+      <glob>/usr/share/fonts/*test*</glob>
+      <glob>/usr/share/fonts/*debug*</glob>
+      <glob>/usr/share/fonts/*sample*</glob>
+    </rejectfont>
+  </selectfont>
+  -->
+
+
+  <!-- ═════════════════════════════════════════════════
+       BUNDLED FONT REGISTRATION
+       Ensures bundled fonts are found and cached
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Force cache generation for bundled fonts -->
+  <match target="scan">
+    <test name="fullname" compare="contains">
+      <string>Noto Sans</string>
+    </test>
+    <edit name="charset" mode="assign">
+      <minus>
+        <name>charset</name>
+        <charset>
+          <range>
+            <int>0xE000</int>
+            <int>0xF8FF</int>
+          </range>
+        </charset>
+      </minus>
+    </edit>
+  </match>
+
+  <!-- Accept TTF, OTF, WOFF, WOFF2 formats -->
+  <match target="scan">
+    <test name="format">
+      <string>TrueType</string>
+    </test>
+    <edit name="fontversion" mode="assign">
+      <int>40</int>
+    </edit>
+  </match>
+
+  <match target="scan">
+    <test name="format">
+      <string>CFF</string>
+    </test>
+    <edit name="fontversion" mode="assign">
+      <int>40</int>
+    </edit>
+  </match>
+
+
+  <!-- ═════════════════════════════════════════════════
+       METRICS COMPATIBILITY
+       Match font metrics to target platform
+       ═════════════════════════════════════════════════ -->
+
+  <!--
+    When spoofing Windows, Liberation fonts should have
+    the same metrics as their Arial/Times New Roman counterparts.
+    (Liberation Sans is metric-compatible with Arial)
+    (Liberation Serif is metric-compatible with Times New Roman)
+    (Liberation Mono is metric-compatible with Courier New)
+
+    These substitutions ensure text measurements match exactly.
+  -->
+
+  <!-- {{SPOOF_WINDOWS_START}} -->
+  <!-- Arial metric-compatible substitution -->
+  <alias>
+    <family>Arial</family>
+    <prefer>
+      <family>Liberation Sans</family>
+    </prefer>
+    <default>
+      <family>Liberation Sans</family>
+    </default>
+  </alias>
+
+  <!-- Times New Roman metric-compatible substitution -->
+  <alias>
+    <family>Times New Roman</family>
+    <prefer>
+      <family>Liberation Serif</family>
+    </prefer>
+    <default>
+      <family>Liberation Serif</family>
+    </default>
+  </alias>
+
+  <!-- Courier New metric-compatible substitution -->
+  <alias>
+    <family>Courier New</family>
+    <prefer>
+      <family>Liberation Mono</family>
+    </prefer>
+    <default>
+      <family>Liberation Mono</family>
+    </default>
+  </alias>
+
+  <!-- Additional metric-compatible fonts -->
+  <alias>
+    <family>Arial Narrow</family>
+    <prefer>
+      <family>Liberation Sans Narrow</family>
+    </prefer>
+  </alias>
+
+  <!-- Symbol/Wingdings → OpenSymbol substitution -->
+  <alias>
+    <family>Symbol</family>
+    <prefer>
+      <family>Open Symbol</family>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+  <!-- Segoe UI → closest available -->
+  <alias>
+    <family>Segoe UI</family>
+    <prefer>
+      <family>Noto Sans</family>
+      <family>DejaVu Sans</family>
+      <family>Liberation Sans</family>
+    </prefer>
+    <default>
+      <family>sans-serif</family>
+    </default>
+  </alias>
+
+  <!-- Calibri → Carlito (metric-compatible clone) -->
+  <alias>
+    <family>Calibri</family>
+    <prefer>
+      <family>Carlito</family>
+      <family>Noto Sans</family>
+    </prefer>
+  </alias>
+
+  <!-- Cambria → Caladea (metric-compatible clone) -->
+  <alias>
+    <family>Cambria</family>
+    <prefer>
+      <family>Caladea</family>
+      <family>Noto Serif</family>
+    </prefer>
+  </alias>
+  <!-- {{SPOOF_WINDOWS_END}} -->
+
+
+  <!-- ═════════════════════════════════════════════════
+       SIZE / SCALING
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Minimum and maximum font sizes (Chromium enforces these) -->
+  <match target="pattern">
+    <test name="size" compare="less_eq">
+      <double>6.0</double>
+    </test>
+    <edit name="size" mode="assign">
+      <double>6.0</double>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test name="size" compare="more_eq">
+      <double>300.0</double>
+    </test>
+    <edit name="size" mode="assign">
+      <double>300.0</double>
+    </edit>
+  </match>
+
+
+  <!-- ═════════════════════════════════════════════════
+       FONT FAMILY ALIAS TABLE
+       Comprehensive mapping for common requests
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Common web fonts → available equivalents -->
+  <alias>
+    <family>Helvetica</family>
+    <prefer>
+      <family>Arial</family>
+      <family>Liberation Sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Verdana</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Geneva</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Tahoma</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Trebuchet MS</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Georgia</family>
+    <prefer>
+      <family>Gelasio</family>
+      <family>Noto Serif</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Palatino</family>
+    <prefer>
+      <family>P052</family>
+      <family>Noto Serif</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Garamond</family>
+    <prefer>
+      <family>EB Garamond</family>
+      <family>Noto Serif</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Impact</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+  <alias>
+    <family>Comic Sans MS</family>
+    <prefer>
+      <family>Comic Neue</family>
+      <family>DejaVu Sans</family>
+    </prefer>
+  </alias>
+
+
+  <!-- ═════════════════════════════════════════════════
+       EMBEDDED FONT HANDLING
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Allow web fonts (WOFF, WOFF2) to work properly -->
+  <match target="font">
+    <edit name="embeddedbitmap" mode="assign">
+      <bool>false</bool>
+    </edit>
+  </match>
+
+  <!-- Enable OpenType features (ligatures, kerning) -->
+  <match target="font">
+    <edit name="fontfeatures" mode="assign">
+      <string>liga on, kern on, clig on</string>
+    </edit>
+  </match>
+
+
+  <!-- ═════════════════════════════════════════════════
+       CACHING
+       ═════════════════════════════════════════════════ -->
+
+  <!-- Use a fast cache directory -->
+  <cachedir>{{CACHE_DIR}}</cachedir>
+
+  <!-- Cache font patterns for faster lookup -->
+  <config>
+    <rescan>
+      <int>30</int>  <!-- Rescan every 30 seconds -->
+    </rescan>
+  </config>
+
+
+  <!-- ═════════════════════════════════════════════════
+       FINAL FALLBACKS
+       ═════════════════════════════════════════════════ -->
+
+  <!--
+    Last-resort font when nothing else matches.
+    Should be a font that's always available.
+  -->
+  <match target="pattern">
+    <test qual="any" name="family">
+      <string>serif</string>
+    </test>
+    <edit name="family" mode="append" binding="weak">
+      <string>Noto Serif</string>
+      <string>DejaVu Serif</string>
+      <string>Liberation Serif</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family">
+      <string>sans-serif</string>
+    </test>
+    <edit name="family" mode="append" binding="weak">
+      <string>Noto Sans</string>
+      <string>DejaVu Sans</string>
+      <string>Liberation Sans</string>
+    </edit>
+  </match>
+
+  <match target="pattern">
+    <test qual="any" name="family">
+      <string>monospace</string>
+    </test>
+    <edit name="family" mode="append" binding="weak">
+      <string>Noto Sans Mono</string>
+      <string>DejaVu Sans Mono</string>
+      <string>Liberation Mono</string>
+    </edit>
+  </match>
+
+
+</fontconfig>
