@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import random
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -32,6 +33,7 @@ import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 # Local imports
 from jbium.fingerprint_manager import FingerprintManager
