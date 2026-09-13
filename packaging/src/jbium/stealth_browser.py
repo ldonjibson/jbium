@@ -574,6 +574,21 @@ class Jbium:
             args.append("--headless=new")  # New headless mode (less detectable)
             args.append("--disable-gpu")
 
+        # WebRTC IP leak prevention. Patch 010's own docstring says this is
+        # "handled via driver flags" rather than a renderer patch (WebRTC's
+        # ICE candidate plumbing lives in the browser process, so patching
+        # Blink wouldn't touch it) — but the flag was never actually added
+        # here, only an env var (STEALTH_FILTER_WEBRTC) that no C++ code
+        # reads. Confirmed live: a CreepJS run leaked this box's real
+        # public IP through host/srflx ICE candidates despite a working
+        # proxy. --force-webrtc-ip-handling-policy is Chromium's real
+        # mechanism for this (same switch backing the enterprise
+        # WebRtcIPHandlingPolicy policy) — disable_non_proxied_udp permits
+        # only proxied UDP, so no local/public interface IP is ever
+        # surfaced as a candidate.
+        if self.config.get("browser", {}).get("filter_webrtc", True):
+            args.append("--force-webrtc-ip-handling-policy=disable_non_proxied_udp")
+
         # Proxy — Chrome's --proxy-server flag takes a bare scheme://host:port
         # and doesn't understand embedded user:pass@ credentials; a URL with
         # userinfo in it fails Chrome's proxy-server parsing outright and
