@@ -245,8 +245,13 @@ class Jbium:
             "url": "about:blank"
         })
         
-        # Connect to the page
-        page_ws_url = f"{self._ws_url.split('/')[0]}/devtools/page/{target_id['targetId']}"
+        # Connect to the page. self._ws_url looks like
+        # "ws://127.0.0.1:PORT/devtools/browser/<id>" — split('/')[0]
+        # only grabs "ws:" (the empty string from "//" lands at index 1,
+        # the real host:port at index 2), producing an invalid URI with
+        # no host. rsplit on "/devtools/" instead keeps "ws://host:port".
+        ws_base = self._ws_url.rsplit("/devtools/", 1)[0]
+        page_ws_url = f"{ws_base}/devtools/page/{target_id['targetId']}"
         page_ws = await websockets.connect(page_ws_url)
         
         page = StealthPage(
