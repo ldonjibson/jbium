@@ -100,7 +100,7 @@ class DeviceGenerator:
         return {
             "templates": {},
             "chrome_versions": [
-                {"major": 120, "minor": 0, "build": 6099, "patch": "109"}
+                {"major": 120, "minor": 0, "build": 6099, "patch": "224"}
             ],
             "user_agent_templates": {
                 "Windows": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_version} Safari/537.36",
