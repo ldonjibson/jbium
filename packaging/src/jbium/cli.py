@@ -29,7 +29,7 @@ from jbium.platform_detect import detect_platform_info, Platform, Architecture
 
 # Override via env var to self-host releases (e.g. a fork, or an
 # internal mirror) without touching this file.
-DEFAULT_RELEASE_BASE = "https://github.com/REPLACE_WITH_OWNER/jbium/releases/download"
+DEFAULT_RELEASE_BASE = "https://github.com/ldonjibson/jbium/releases/download"
 
 _PLATFORM_KEY = {
     (Platform.LINUX, Architecture.X86_64): "linux-x64",
