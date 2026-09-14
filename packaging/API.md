@@ -10,6 +10,7 @@ source changes, this doc needs updating alongside it.
 pip install jbium              # core driver
 pip install jbium[geo]         # + accurate local GeoIP via MaxMind GeoLite2
 jbium fetch                    # downloads the prebuilt browser binary for your OS/arch
+jbium fetch-geoip              # downloads the GeoIP databases [geo] needs (see below)
 ```
 
 ---
@@ -132,6 +133,50 @@ environment variable (e.g. for a fork or a self-hosted mirror).
 
 ---
 
+## `jbium fetch-geoip` — CLI
+
+```bash
+jbium fetch-geoip [--license-key KEY] [--city-url URL] [--asn-url URL] [--force]
+```
+
+Downloads the two GeoIP databases `GeoIPResolver` uses — GeoLite2-City
+and GeoLite2-ASN — to `~/.cache/jbium/geoip/`, which `GeoIPResolver`
+checks automatically (right after an explicit path and the
+`STEALTH_GEOIP_DB_PATH`/`STEALTH_GEOIP_ASN_DB_PATH` env vars, before
+falling back to the less accurate heuristic resolver). Neither `pip
+install jbium[geo]` nor plain `jbium fetch` gets you these — `[geo]`
+only installs the `geoip2` library, and the actual `.mmdb` data can't
+be bundled in the package at all (MaxMind's license forbids
+redistributing it).
+
+| Argument | Required | Default | Behavior |
+|---|---|---|---|
+| `--license-key` | No | `None` (also read from `GEOIP_LICENSE_KEY`) | A MaxMind license key — free to generate at [maxmind.com](https://www.maxmind.com/en/accounts/current/license-key). Gets you the real GeoLite2 data. Without one, falls back to DB-IP's free "Lite" tier (no signup, but coarser city-level accuracy and no timezone field). |
+| `--city-url` | No | `None` (also read from `GEOIP_CITY_URL`) | Fetch the City database from an arbitrary URL instead — your own CDN, an internal mirror, a public community mirror. Takes priority over `--license-key` for this one file. Shape is inferred from the URL's suffix: bare `.mmdb` is saved as-is, `.mmdb.gz` is gunzipped, `.tar.gz` is unwrapped the same way a MaxMind archive is. |
+| `--asn-url` | No | `None` (also read from `GEOIP_ASN_URL`) | Same as `--city-url`, for the ASN database. |
+| `--force` | No | `False` | Re-download even if both databases already exist in the cache. |
+
+Each database's source is chosen independently: its own `--*-url` first,
+then `--license-key`, then the DB-IP default — so e.g. a custom `--city-url`
+with no `--asn-url` still gets a working ASN database via DB-IP.
+
+Example, pointing at a public GeoLite2 mirror instead of signing up for
+a MaxMind account (verified working — genuine `GeoLite2-City`/
+`GeoLite2-ASN` data, not a substitute):
+
+```bash
+jbium fetch-geoip \
+  --city-url "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb" \
+  --asn-url  "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-ASN.mmdb"
+```
+
+This particular mirror is a third-party redistribution with no
+official MaxMind backing — fine as a convenience or a fallback, not
+something to depend on for production without your own mirror or a
+real MaxMind license key.
+
+---
+
 ## Data classes
 
 Returned or embedded in return values — you generally read these
@@ -179,7 +224,8 @@ proxy:
 
 geoip:
   enabled: true
-  database_path: ./data/geoip/GeoLite2-City.mmdb   # MaxMind GeoLite2, not bundled — see [geo] extra
+  database_path: ./data/geoip/GeoLite2-City.mmdb       # MaxMind GeoLite2, not bundled — see [geo] extra
+  asn_database_path: ./data/geoip/GeoLite2-ASN.mmdb    # optional — see `jbium fetch-geoip`; without it, asn/isp/ip_type stay Unknown/RESIDENTIAL
 
 anti_detection:
   filter_webrtc: true

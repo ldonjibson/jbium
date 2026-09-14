@@ -73,6 +73,9 @@ Rebuilding after a patch change is incremental — `FORCE_PATCH=1 bash scripts/b
 pip install -r requirements.txt
 python fonts/download_fonts.py --platform linux
 bash scripts/download_geoip.sh
+# no signup needed (uses a free DB-IP mirror) -- for MaxMind's more
+# accurate GeoLite2 data instead: export GEOIP_LICENSE_KEY=<your-key>
+# first (free at https://www.maxmind.com/en/accounts/current/license-key)
 
 # Point the driver at the binary you built
 export STEALTH_BROWSER_PATH=~/jbium/chromium/src/out/Release/jbium
