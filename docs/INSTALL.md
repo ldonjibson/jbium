@@ -13,9 +13,9 @@ bash scripts/download_geoip.sh     # populates ./data/GeoLite2-City.mmdb for Geo
 # 4. Point the driver at the binary you just built
 export STEALTH_BROWSER_PATH=~/jbium/chromium/src/out/Release/jbium
 
-# 5. Set your Webshare proxy credentials (yours — no longer hardcoded in source)
-export STEALTH_WEBSHARE_USERNAME=lnrqiugy
-export STEALTH_WEBSHARE_PASSWORD=iekhuh2qp013
+# 5. Set your Webshare proxy credentials (yours — never commit real values here)
+export STEALTH_WEBSHARE_USERNAME=<your-username>
+export STEALTH_WEBSHARE_PASSWORD=<your-password>
 
 # 6. Run the actual test
 python scripts/quick_check.py https://bot.sannysoft.com/
