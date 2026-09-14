@@ -250,14 +250,63 @@ def _fetch_dbip_edition(name: str, month: str, dest: Path) -> None:
         tmp_gz.unlink(missing_ok=True)
 
 
-def fetch_geoip(license_key: str = None, force: bool = False) -> Path:
+def _fetch_custom_url(url: str, dest: Path) -> None:
     """
-    Download GeoLite2-City + GeoLite2-ASN (MaxMind, with a license
-    key) or their free DB-IP equivalents (without one) to
-    ~/.cache/jbium/geoip/ -- the location GeoIPResolver checks
-    automatically, right after STEALTH_GEOIP_DB_PATH/
-    STEALTH_GEOIP_ASN_DB_PATH and before falling back to the less
-    accurate heuristic resolver.
+    Download a GeoIP database from an arbitrary URL -- a personal CDN,
+    an internal mirror, whatever -- to `dest`. There's no fixed
+    convention to assume for someone else's hosting, so the shape is
+    inferred from the URL's own suffix: a bare .mmdb is saved as-is, a
+    .mmdb.gz is gunzipped, and a .tar.gz is unwrapped the same way a
+    MaxMind archive is (first .mmdb member found, flattened out of
+    whatever folder it's nested in).
+    """
+
+    if url.endswith(".tar.gz") or url.endswith(".tgz"):
+        tmp_tar = dest.with_name(dest.name + ".tar.gz")
+        print(f"  Downloading {dest.name} from {url} ...")
+        _download(url, tmp_tar)
+        try:
+            with tarfile.open(tmp_tar) as tf:
+                member = next(
+                    (m for m in tf.getmembers() if m.name.endswith(".mmdb")), None
+                )
+                if not member:
+                    raise RuntimeError(f"No .mmdb file found in archive: {url}")
+                member.name = dest.name
+                tf.extract(member, dest.parent)
+        finally:
+            tmp_tar.unlink(missing_ok=True)
+    elif url.endswith(".gz"):
+        tmp_gz = dest.with_name(dest.name + ".gz")
+        print(f"  Downloading {dest.name} from {url} ...")
+        _download(url, tmp_gz)
+        try:
+            with gzip.open(tmp_gz, "rb") as f_in, open(dest, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        finally:
+            tmp_gz.unlink(missing_ok=True)
+    else:
+        print(f"  Downloading {dest.name} from {url} ...")
+        _download(url, dest)
+
+
+def fetch_geoip(
+    license_key: str = None,
+    force: bool = False,
+    city_url: str = None,
+    asn_url: str = None,
+) -> Path:
+    """
+    Download GeoLite2-City + GeoLite2-ASN to ~/.cache/jbium/geoip/ --
+    the location GeoIPResolver checks automatically, right after
+    STEALTH_GEOIP_DB_PATH/STEALTH_GEOIP_ASN_DB_PATH and before falling
+    back to the less accurate heuristic resolver.
+
+    Source for each file is chosen independently, in this order:
+    1. An explicit city_url/asn_url (or GEOIP_CITY_URL/GEOIP_ASN_URL)
+       -- e.g. your own CDN or internal mirror.
+    2. A MaxMind license_key (or GEOIP_LICENSE_KEY), if given.
+    3. The free DB-IP equivalent, as a last resort needing no signup.
     """
 
     geoip_dir = _geoip_dir()
@@ -270,17 +319,31 @@ def fetch_geoip(license_key: str = None, force: bool = False) -> Path:
         print(f"  Using cached GeoIP databases: {geoip_dir}")
         return geoip_dir
 
+    city_url = city_url or os.environ.get("GEOIP_CITY_URL")
+    asn_url = asn_url or os.environ.get("GEOIP_ASN_URL")
     license_key = license_key or os.environ.get("GEOIP_LICENSE_KEY")
+    month = date.today().strftime("%Y-%m")
 
-    if license_key:
-        print("  Using MaxMind license key...")
+    if city_url:
+        print("  Using custom source for GeoLite2-City...")
+        _fetch_custom_url(city_url, city_path)
+    elif license_key:
+        print("  Using MaxMind license key for GeoLite2-City...")
         _fetch_maxmind_edition("GeoLite2-City", license_key, city_path)
+    else:
+        print("  Using free DB-IP database for City (no license key)...")
+        print("  For better accuracy, pass --city-url/--license-key or set GEOIP_CITY_URL/GEOIP_LICENSE_KEY")
+        _fetch_dbip_edition("dbip-city-lite", month, city_path)
+
+    if asn_url:
+        print("  Using custom source for GeoLite2-ASN...")
+        _fetch_custom_url(asn_url, asn_path)
+    elif license_key:
+        print("  Using MaxMind license key for GeoLite2-ASN...")
         _fetch_maxmind_edition("GeoLite2-ASN", license_key, asn_path)
     else:
-        print("  Using free DB-IP database (no license key)...")
-        print("  For better accuracy, pass --license-key or set GEOIP_LICENSE_KEY")
-        month = date.today().strftime("%Y-%m")
-        _fetch_dbip_edition("dbip-city-lite", month, city_path)
+        print("  Using free DB-IP database for ASN (no license key)...")
+        print("  For better accuracy, pass --asn-url/--license-key or set GEOIP_ASN_URL/GEOIP_LICENSE_KEY")
         _fetch_dbip_edition("dbip-asn-lite", month, asn_path)
 
     print(f"OK: GeoIP databases ready at {geoip_dir}")
@@ -314,6 +377,17 @@ def main(argv=None) -> int:
              "also read from GEOIP_LICENSE_KEY)",
     )
     geoip_p.add_argument(
+        "--city-url", default=None,
+        help="Custom URL for the City database -- e.g. your own CDN "
+             "(.mmdb, .mmdb.gz, or .tar.gz; also read from GEOIP_CITY_URL). "
+             "Takes priority over --license-key for this file.",
+    )
+    geoip_p.add_argument(
+        "--asn-url", default=None,
+        help="Custom URL for the ASN database, same rules as --city-url "
+             "(also read from GEOIP_ASN_URL).",
+    )
+    geoip_p.add_argument(
         "--force", action="store_true",
         help="Re-download even if cached databases already exist",
     )
@@ -334,7 +408,12 @@ def main(argv=None) -> int:
 
     if args.command == "fetch-geoip":
         try:
-            fetch_geoip(license_key=args.license_key, force=args.force)
+            fetch_geoip(
+                license_key=args.license_key,
+                force=args.force,
+                city_url=args.city_url,
+                asn_url=args.asn_url,
+            )
         except RuntimeError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 1
