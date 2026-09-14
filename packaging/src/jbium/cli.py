@@ -93,8 +93,18 @@ def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
 
+    # DB-IP's download host (Cloudflare-fronted) 403s Python's default
+    # "Python-urllib/x.y" User-Agent specifically -- confirmed live:
+    # curl succeeds with any UA, bare urlopen() fails, only the UA
+    # differs. GitHub Releases (the other thing this function fetches)
+    # doesn't care either way, so a generic browser-shaped UA is safe
+    # for both call sites.
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "Mozilla/5.0 (compatible; jbium-fetch)"}
+    )
+
     try:
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(request) as response:
             total = int(response.headers.get("Content-Length", 0) or 0)
             downloaded = 0
             with open(tmp, "wb") as f:
