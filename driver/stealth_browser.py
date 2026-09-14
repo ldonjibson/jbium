@@ -233,13 +233,13 @@ class Jbium:
         """Create a new page/tab"""
         
         if not self._ws_connection:
-            self._ws_connection = await websockets.connect(self._ws_url)
-        
+            self._ws_connection = await websockets.connect(self._ws_url, max_size=None)
+
         # Create new target via CDP
         target_id = await self._cdp_command("Target.createTarget", {
             "url": "about:blank"
         })
-        
+
         # Connect to the page. self._ws_url looks like
         # "ws://127.0.0.1:PORT/devtools/browser/<id>" — split('/')[0]
         # only grabs "ws:" (the empty string from "//" lands at index 1,
@@ -247,7 +247,14 @@ class Jbium:
         # no host. rsplit on "/devtools/" instead keeps "ws://host:port".
         ws_base = self._ws_url.rsplit("/devtools/", 1)[0]
         page_ws_url = f"{ws_base}/devtools/page/{target_id['targetId']}"
-        page_ws = await websockets.connect(page_ws_url)
+        # max_size=None: the `websockets` library defaults to a 1MiB max
+        # frame size, which a real page's full outer HTML (get_content(),
+        # via Runtime.evaluate's response) trivially exceeds -- confirmed
+        # live against vrbo.com. Hitting that default doesn't just fail
+        # the one command, it closes the whole CDP connection outright
+        # (ConnectionClosedError, code 1009), breaking every later
+        # command on this page too.
+        page_ws = await websockets.connect(page_ws_url, max_size=None)
         
         page = StealthPage(
             browser=self,
@@ -793,9 +800,9 @@ chrome.webRequest.onAuthRequired.addListener(
     
     async def _cdp_command(self, method: str, params: dict = None) -> dict:
         """Send CDP command"""
-        
+
         if not self._ws_connection:
-            self._ws_connection = await websockets.connect(self._ws_url)
+            self._ws_connection = await websockets.connect(self._ws_url, max_size=None)
         
         message_id = random.randint(1, 999999)
         message = {
