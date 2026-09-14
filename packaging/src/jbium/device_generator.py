@@ -270,7 +270,22 @@ class DeviceGenerator:
             weighted.append((tmpl, weight, name))
         
         if not weighted:
-            # Fallback: use first template
+            # Fallback: use first template. Distinct from the "no
+            # region/OS match" case this branch is normally for --
+            # `templates` itself being empty means fingerprints.json
+            # couldn't be found/loaded at all (see _load_templates's own
+            # minimal built-in fallback, which sets "templates": {}) and
+            # DeviceGenerator was constructed with the wrong path/cwd.
+            # Caught live: list(templates.keys())[0] on an empty dict
+            # raised a bare, cryptic IndexError instead of pointing at
+            # the actual problem.
+            if not templates:
+                raise RuntimeError(
+                    f"No device templates available (fingerprints.json "
+                    f"not found or empty at {self.templates_path}) -- "
+                    f"check DeviceGenerator's templates_path / the "
+                    f"process's working directory."
+                )
             first_name = list(templates.keys())[0]
             result = templates[first_name]
             result["_name"] = first_name
