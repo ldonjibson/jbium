@@ -581,13 +581,27 @@ class Jbium:
         # here, only an env var (STEALTH_FILTER_WEBRTC) that no C++ code
         # reads. Confirmed live: a CreepJS run leaked this box's real
         # public IP through host/srflx ICE candidates despite a working
-        # proxy. --force-webrtc-ip-handling-policy is Chromium's real
-        # mechanism for this (same switch backing the enterprise
-        # WebRtcIPHandlingPolicy policy) — disable_non_proxied_udp permits
-        # only proxied UDP, so no local/public interface IP is ever
-        # surfaced as a candidate.
+        # proxy.
+        #
+        # First attempt used --force-webrtc-ip-handling-policy — wrong
+        # switch. Verified against this box's own pinned Chromium source:
+        # that one (content/public/common/content_switches.cc) is only
+        # ever read by content_shell (content/shell/browser/shell.cc), a
+        # test harness, not the real `chrome` target we build. The real
+        # browser maps a *different* command-line switch,
+        # chrome::switches::kWebRtcIPHandlingPolicy = "webrtc-ip-handling-
+        # policy" (chrome/common/chrome_switches.cc), through
+        # ChromeCommandLinePrefStore into the kWebRTCIPHandlingPolicy
+        # pref, which chrome/browser/renderer_preferences_util.cc then
+        # copies into RendererPreferences for the actual PeerConnection
+        # code to enforce. The value string itself,
+        # "disable_non_proxied_udp" (permit only proxied UDP, so no
+        # local/public interface IP is ever surfaced as a candidate), was
+        # already correct per
+        # third_party/blink/common/peerconnection/webrtc_ip_handling_policy.cc
+        # — only the flag name was wrong.
         if self.config.get("browser", {}).get("filter_webrtc", True):
-            args.append("--force-webrtc-ip-handling-policy=disable_non_proxied_udp")
+            args.append("--webrtc-ip-handling-policy=disable_non_proxied_udp")
 
         # Proxy — Chrome's --proxy-server flag takes a bare scheme://host:port
         # and doesn't understand embedded user:pass@ credentials; a URL with
