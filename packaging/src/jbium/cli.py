@@ -1,19 +1,29 @@
 """
 ════════════════════════════════════════════════════════════
-Jbium CLI — `jbium fetch`
+Jbium CLI — `jbium fetch` / `jbium fetch-geoip`
 ════════════════════════════════════════════════════════════
 
-Downloads the prebuilt stealth Chromium binary for the current
-platform from a GitHub Release, verifies it, and extracts it to
-~/.cache/jbium/bin/ — the first location jbium.platform_detect's
+`jbium fetch` downloads the prebuilt stealth Chromium binary for the
+current platform from a GitHub Release, verifies it, and extracts it
+to ~/.cache/jbium/bin/ — the first location jbium.platform_detect's
 find_browser_binary() checks.
 
 This mirrors scripts/package_all.py's own naming convention exactly
 (same archive name format, same download URL template, same
 ~/.cache/jbium cache location) so a release built with that script
 is fetchable by this CLI with no translation step.
+
+`jbium fetch-geoip` downloads the GeoIP databases GeoIPResolver uses
+(MaxMind's GeoLite2-City + GeoLite2-ASN with a license key, or their
+free DB-IP equivalents without one) to ~/.cache/jbium/geoip/ — the
+pip-installed-package equivalent of scripts/download_geoip.sh, which
+only exists in the from-source repo tree and isn't shipped with this
+package. Kept logically in sync with that script's two download paths;
+see its own comments for the MaxMind-endpoint and DB-IP-URL specifics
+this mirrors.
 """
 
+import gzip
 import hashlib
 import json
 import os
@@ -23,6 +33,7 @@ import tarfile
 import urllib.error
 import urllib.request
 import zipfile
+from datetime import date
 from pathlib import Path
 
 from jbium.platform_detect import detect_platform_info, Platform, Architecture
@@ -54,6 +65,10 @@ def _cache_dir() -> Path:
 
 def _bin_dir() -> Path:
     return _cache_dir() / "bin"
+
+
+def _geoip_dir() -> Path:
+    return _cache_dir() / "geoip"
 
 
 def _release_base() -> str:
@@ -105,7 +120,7 @@ def _download(url: str, dest: Path) -> None:
                 f"No build published at {url}\n"
                 f"This usually means a jbium release for your platform "
                 f"hasn't been published yet - see "
-                f"https://github.com/REPLACE_WITH_OWNER/jbium for the "
+                f"https://github.com/ldonjibson/jbium for the "
                 f"current release status, or build it yourself with "
                 f"scripts/build_linux.sh / build_macos.sh / "
                 f"build_windows.bat."
@@ -179,6 +194,89 @@ def fetch(version: str, checksum: str = None, force: bool = False) -> Path:
     return bin_dir
 
 
+def _fetch_maxmind_edition(edition: str, license_key: str, dest: Path) -> None:
+    """
+    Download one MaxMind GeoLite2 edition and flatten its .mmdb out of
+    the versioned subfolder MaxMind's tarball wraps it in, straight to
+    `dest`. Uses the long-standing direct-download endpoint (only a
+    license key needed, no account ID) -- see
+    scripts/download_geoip.sh's own comment for why, and for the newer
+    REST endpoint this deliberately avoids.
+    """
+
+    tmp_tar = dest.with_name(dest.name + ".tar.gz")
+    url = (
+        "https://download.maxmind.com/app/geoip_download"
+        f"?edition_id={edition}&license_key={license_key}&suffix=tar.gz"
+    )
+    print(f"  Downloading {edition}...")
+    _download(url, tmp_tar)
+
+    try:
+        with tarfile.open(tmp_tar) as tf:
+            member = next(
+                (m for m in tf.getmembers() if m.name.endswith(".mmdb")), None
+            )
+            if not member:
+                raise RuntimeError(f"No .mmdb file found in the {edition} archive")
+            member.name = dest.name
+            tf.extract(member, dest.parent)
+    finally:
+        tmp_tar.unlink(missing_ok=True)
+
+
+def _fetch_dbip_edition(name: str, month: str, dest: Path) -> None:
+    """Download one free DB-IP Lite edition and gunzip it to `dest`."""
+
+    tmp_gz = dest.with_name(dest.name + ".gz")
+    url = f"https://download.db-ip.com/free/{name}-{month}.mmdb.gz"
+    print(f"  Downloading {name}...")
+    _download(url, tmp_gz)
+
+    try:
+        with gzip.open(tmp_gz, "rb") as f_in, open(dest, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    finally:
+        tmp_gz.unlink(missing_ok=True)
+
+
+def fetch_geoip(license_key: str = None, force: bool = False) -> Path:
+    """
+    Download GeoLite2-City + GeoLite2-ASN (MaxMind, with a license
+    key) or their free DB-IP equivalents (without one) to
+    ~/.cache/jbium/geoip/ -- the location GeoIPResolver checks
+    automatically, right after STEALTH_GEOIP_DB_PATH/
+    STEALTH_GEOIP_ASN_DB_PATH and before falling back to the less
+    accurate heuristic resolver.
+    """
+
+    geoip_dir = _geoip_dir()
+    geoip_dir.mkdir(parents=True, exist_ok=True)
+
+    city_path = geoip_dir / "GeoLite2-City.mmdb"
+    asn_path = geoip_dir / "GeoLite2-ASN.mmdb"
+
+    if not force and city_path.exists() and asn_path.exists():
+        print(f"  Using cached GeoIP databases: {geoip_dir}")
+        return geoip_dir
+
+    license_key = license_key or os.environ.get("GEOIP_LICENSE_KEY")
+
+    if license_key:
+        print("  Using MaxMind license key...")
+        _fetch_maxmind_edition("GeoLite2-City", license_key, city_path)
+        _fetch_maxmind_edition("GeoLite2-ASN", license_key, asn_path)
+    else:
+        print("  Using free DB-IP database (no license key)...")
+        print("  For better accuracy, pass --license-key or set GEOIP_LICENSE_KEY")
+        month = date.today().strftime("%Y-%m")
+        _fetch_dbip_edition("dbip-city-lite", month, city_path)
+        _fetch_dbip_edition("dbip-asn-lite", month, asn_path)
+
+    print(f"OK: GeoIP databases ready at {geoip_dir}")
+    return geoip_dir
+
+
 def main(argv=None) -> int:
     import argparse
 
@@ -197,6 +295,19 @@ def main(argv=None) -> int:
         help="Re-download even if a cached archive already exists",
     )
 
+    geoip_p = sub.add_parser(
+        "fetch-geoip", help="Download GeoIP databases (City + ASN) for accurate GeoIP resolution"
+    )
+    geoip_p.add_argument(
+        "--license-key", default=None,
+        help="MaxMind license key (uses free DB-IP data if omitted; "
+             "also read from GEOIP_LICENSE_KEY)",
+    )
+    geoip_p.add_argument(
+        "--force", action="store_true",
+        help="Re-download even if cached databases already exist",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "fetch":
@@ -206,6 +317,14 @@ def main(argv=None) -> int:
             version = __version__
         try:
             fetch(version, checksum=args.checksum, force=args.force)
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
+        return 0
+
+    if args.command == "fetch-geoip":
+        try:
+            fetch_geoip(license_key=args.license_key, force=args.force)
         except RuntimeError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 1

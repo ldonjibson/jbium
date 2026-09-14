@@ -107,15 +107,25 @@ class GeoIPResolver:
         # Mirror platform_detect.find_browser_binary's STEALTH_BROWSER_PATH
         # convention for this same class of "real file the package can't
         # ship" problem: let an explicit env var override a missing default.
+        # Checked in order: explicit path, env var override, then
+        # ~/.cache/jbium/geoip/ -- where `jbium fetch-geoip` downloads
+        # to, mirroring find_browser_binary's own fetch-cache-first
+        # search order for the browser binary.
+        cache_geoip_dir = Path.home() / ".cache" / "jbium" / "geoip"
+
         if not self.db_path.exists():
             env_path = os.environ.get("STEALTH_GEOIP_DB_PATH")
             if env_path and Path(env_path).exists():
                 self.db_path = Path(env_path)
+            elif (cache_geoip_dir / "GeoLite2-City.mmdb").exists():
+                self.db_path = cache_geoip_dir / "GeoLite2-City.mmdb"
 
         if not self.asn_db_path.exists():
             env_asn_path = os.environ.get("STEALTH_GEOIP_ASN_DB_PATH")
             if env_asn_path and Path(env_asn_path).exists():
                 self.asn_db_path = Path(env_asn_path)
+            elif (cache_geoip_dir / "GeoLite2-ASN.mmdb").exists():
+                self.asn_db_path = cache_geoip_dir / "GeoLite2-ASN.mmdb"
 
         self._reader = None
         self._asn_reader = None
