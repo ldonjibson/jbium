@@ -1255,9 +1255,25 @@ class StealthPage:
         content = await self.get_content()
         content_lower = content.lower()
         
+        # A bare "captcha" substring is too broad -- caught live in a
+        # concurrent VRBO batch run: it false-positived on a page that
+        # had loaded completely normally (real title, 181 real reviews,
+        # full amenities), because Google's standard reCAPTCHA privacy
+        # disclosure boilerplate ("This site is protected by reCAPTCHA
+        # and the Google Privacy Policy...") is extremely common on
+        # real, unblocked pages with an ordinary contact-host form or
+        # fraud-prevention widget -- it says nothing about whether the
+        # visitor was actually challenged. Matching actual
+        # challenge-page phrasing instead is far more specific.
         indicators = {
             "datadome_captcha": "geo.captcha-delivery.com" in content,
-            "captcha_present": "captcha" in content_lower,
+            "captcha_present": any(p in content_lower for p in (
+                "verify you are human",
+                "unusual traffic from your computer",
+                "i'm not a robot",
+                "complete the captcha below",
+                "solve the captcha",
+            )),
             "blocked_message": "access denied" in content_lower,
             "rate_limited": "rate limit" in content_lower or "too many requests" in content_lower,
             "cloudflare": "cloudflare" in content_lower and "ray id" in content_lower,
