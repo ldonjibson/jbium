@@ -29,7 +29,10 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
+import uuid
+from collections import deque
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
@@ -667,8 +670,20 @@ class Jbium:
         # User data directory (fresh) — tempfile.gettempdir() resolves to
         # %TEMP% on Windows and /tmp on Linux/macOS, unlike a hardcoded
         # "/tmp/..." path which isn't valid on native Windows.
+        #
+        # int(time.time()) only has 1-second resolution -- confirmed live
+        # running concurrent launches: two Jbium.launch() calls landing in
+        # the same wall-clock second got the *identical* user-data-dir.
+        # Chrome's single-instance-per-profile lock then made the second
+        # process silently forward its request to the first ("Opening in
+        # existing browser session", exit code 0) and exit without ever
+        # opening its own CDP debug port -- which _wait_for_browser_ready
+        # then dutifully timed out waiting for, 30 seconds later, with no
+        # indication of the real cause. uuid4 makes a collision virtually
+        # impossible regardless of how many launches happen in the same
+        # instant.
         user_data_dir = str(
-            Path(tempfile.gettempdir()) / f"stealth-profile-{int(time.time())}"
+            Path(tempfile.gettempdir()) / f"stealth-profile-{uuid.uuid4().hex}"
         )
         args.append(f"--user-data-dir={user_data_dir}")
         
@@ -695,7 +710,27 @@ class Jbium:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        
+
+        # Drain stdout/stderr continuously on background threads instead
+        # of leaving them as unread pipes -- an unread PIPE fills its OS
+        # buffer (~64KB) once the process writes enough (Chrome is very
+        # noisy on stderr: GPU/Vulkan errors, policy-logger lines, etc.,
+        # seen repeatedly in real runs), at which point the child blocks
+        # on its own write() call. Keeping just the tail also gives
+        # _wait_for_browser_ready something real to report on failure
+        # instead of a bare "did not become ready".
+        self._browser_stderr_tail = deque(maxlen=60)
+
+        def _drain(pipe):
+            try:
+                for line in iter(pipe.readline, b""):
+                    self._browser_stderr_tail.append(line.decode(errors="replace").rstrip())
+            except Exception:
+                pass
+
+        threading.Thread(target=_drain, args=(process.stdout,), daemon=True).start()
+        threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
+
         # Store debug port
         self._debug_port = debug_port
 
@@ -784,7 +819,13 @@ chrome.webRequest.onAuthRequired.addListener(
             except Exception:
                 await asyncio.sleep(0.5)
         
-        raise RuntimeError("Browser did not become ready within timeout")
+        exit_code = self._browser_process.poll() if self._browser_process else None
+        tail = "\n".join(self._browser_stderr_tail) if getattr(self, "_browser_stderr_tail", None) else "(no output captured)"
+        raise RuntimeError(
+            f"Browser did not become ready within timeout "
+            f"(process exit code: {exit_code!r} -- None means still running)\n"
+            f"Last output:\n{tail}"
+        )
     
     async def _get_ws_url(self) -> str:
         """Get WebSocket URL for CDP"""
