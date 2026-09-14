@@ -62,6 +62,11 @@ fingerprint:
 geoip:
   enabled: true
   database_path: "./data/geoip/GeoLite2-City.mmdb"
+  # Optional -- a separate free download from the same MaxMind account.
+  # Without it, GeoProfile.asn/isp stay "Unknown" and ip_type stays
+  # RESIDENTIAL for every IP, since the City database above carries no
+  # ASN/ISP data of its own.
+  asn_database_path: "./data/geoip/GeoLite2-ASN.mmdb"
   # Fallback if GeoIP fails
   fallback_country: "US"
   fallback_timezone: "America/New_York"

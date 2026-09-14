@@ -82,8 +82,13 @@ class GeoIPResolver:
     Last resort: Smart defaults
     """
     
-    def __init__(self, db_path: str = "./data/geoip/GeoLite2-City.mmdb"):
+    def __init__(
+        self,
+        db_path: str = "./data/geoip/GeoLite2-City.mmdb",
+        asn_db_path: str = "./data/geoip/GeoLite2-ASN.mmdb",
+    ):
         self.db_path = Path(db_path)
+        self.asn_db_path = Path(asn_db_path)
 
         # STEALTH_GEOIP_DB_PATH lets the .mmdb (never shipped in git --
         # MaxMind's license prohibits redistributing it, see .gitignore)
@@ -95,7 +100,13 @@ class GeoIPResolver:
             if env_path and Path(env_path).exists():
                 self.db_path = Path(env_path)
 
+        if not self.asn_db_path.exists():
+            env_asn_path = os.environ.get("STEALTH_GEOIP_ASN_DB_PATH")
+            if env_asn_path and Path(env_asn_path).exists():
+                self.asn_db_path = Path(env_asn_path)
+
         self._reader = None
+        self._asn_reader = None
         self._locale_data = self._load_locale_data()
 
         if HAS_GEOIP2 and self.db_path.exists():
@@ -104,6 +115,20 @@ class GeoIPResolver:
         else:
             logger.warning(f"GeoIP database not found: {self.db_path}")
             logger.warning("Using fallback resolution (less accurate)")
+
+        # The free GeoLite2-*City*.mmdb carries no ASN/ISP data at all --
+        # that's a separate free download, GeoLite2-ASN.mmdb, from the
+        # same MaxMind account. It's optional: without it, asn/isp/
+        # ip_type just stay "Unknown"/RESIDENTIAL as before, same as
+        # when the primary City database is missing.
+        if HAS_GEOIP2 and self.asn_db_path.exists():
+            self._asn_reader = geoip2.database.Reader(str(self.asn_db_path))
+            logger.info(f"GeoIP ASN database loaded: {self.asn_db_path}")
+        else:
+            logger.info(
+                f"GeoIP ASN database not found: {self.asn_db_path} "
+                "(optional -- asn/isp/ip_type will be Unknown/RESIDENTIAL)"
+            )
     
     def _load_locale_data(self) -> dict:
         """Load locale mappings from config"""
@@ -167,20 +192,43 @@ class GeoIPResolver:
         # Last resort: smart defaults
         return self._smart_defaults(ip)
     
+    def _query_asn(self, ip: str) -> tuple:
+        """
+        Look up (asn_number, asn_org) from the separate GeoLite2-ASN
+        database, if one was loaded. Returns (0, "") when the ASN
+        database isn't available or has no entry for this IP -- the
+        free GeoLite2-City database this class primarily uses carries
+        no ASN/ISP data at all, so this is the only source for it.
+        """
+
+        if not self._asn_reader:
+            return 0, ""
+
+        try:
+            asn_response = self._asn_reader.asn(ip)
+            return (
+                asn_response.autonomous_system_number or 0,
+                asn_response.autonomous_system_organization or "",
+            )
+        except Exception as e:
+            logger.debug(f"ASN lookup failed for {ip}: {e}")
+            return 0, ""
+
     def _resolve_local(self, ip: str) -> GeoProfile:
         """Resolve using MaxMind GeoLite2"""
-        
+
         response = self._reader.city(ip)
-        
+        asn_number, asn_org = self._query_asn(ip)
+
         country_code = response.country.iso_code
         if not country_code:
             raise ValueError(f"No country data for {ip}")
-        
+
         # Get locale data
         locale_info = self._locale_data.get(
             "country_data", {}
         ).get(country_code, {})
-        
+
         if not locale_info:
             # Use generic English data
             locale_info = {
@@ -191,9 +239,9 @@ class GeoIPResolver:
                 "date_format": "MM/DD/YYYY",
                 "os_distribution": {"Windows": 0.70, "macOS": 0.20, "Linux": 0.05},
             }
-        
+
         # Classify IP type
-        ip_type = self._classify_ip(ip, response)
+        ip_type = self._classify_ip(asn_org)
         
         # Get geolocation from locale data if available
         geo_cities = locale_info.get("geolocation", {}).get("cities", [])
@@ -224,9 +272,9 @@ class GeoIPResolver:
             currency=locale_info.get("currency", "USD"),
             date_format=locale_info.get("date_format", "MM/DD/YYYY"),
             ip_type=ip_type,
-            asn=f"AS{response.traits.autonomous_system_number or 0}",
-            isp=response.traits.autonomous_system_organization or "Unknown",
-            organization=response.traits.organization or "Unknown",
+            asn=f"AS{asn_number}" if asn_number else "Unknown",
+            isp=asn_org or "Unknown",
+            organization=response.traits.organization or asn_org or "Unknown",
             common_screen_resolutions=locale_info.get("common_resolutions", []),
             common_fonts=locale_info.get("common_fonts", []),
             os_distribution=locale_info.get("os_distribution", {}),
@@ -310,10 +358,10 @@ class GeoIPResolver:
             fallback_used=True,
         )
     
-    def _classify_ip(self, ip: str, response) -> IPType:
-        """Classify the type of IP address"""
-        
-        org = (response.traits.autonomous_system_organization or "").lower()
+    def _classify_ip(self, asn_org: str) -> IPType:
+        """Classify the type of IP address from its ASN organization name"""
+
+        org = (asn_org or "").lower()
         
         # Known hosting providers
         hosting = [

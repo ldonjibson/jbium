@@ -105,8 +105,11 @@ class Jbium:
         # Managers
         self.geoip_resolver = GeoIPResolver(
             db_path=self.config.get("geoip", {}).get(
-                "database_path", "./data/GeoLite2-City.mmdb"
-            )
+                "database_path", "./data/geoip/GeoLite2-City.mmdb"
+            ),
+            asn_db_path=self.config.get("geoip", {}).get(
+                "asn_database_path", "./data/geoip/GeoLite2-ASN.mmdb"
+            ),
         )
         self.fingerprint_manager = FingerprintManager()
         self.device_generator = DeviceGenerator(
