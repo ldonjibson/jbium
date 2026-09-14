@@ -814,6 +814,19 @@ chrome.webRequest.onAuthRequired.addListener(
                 return data.get("result", {})
 
 
+# Keys physically adjacent to each letter on a QWERTY layout — the
+# source of most real single-character typos, used by
+# StealthPage.type_text's typo simulation.
+_QWERTY_ADJACENCY = {
+    "a": "qwsz", "b": "vghn", "c": "xdfv", "d": "serfcx", "e": "wsdr",
+    "f": "drtgvc", "g": "ftyhbv", "h": "gyujnb", "i": "ujko", "j": "huikmn",
+    "k": "jiolm", "l": "kop", "m": "njk", "n": "bhjm", "o": "iklp",
+    "p": "ol", "q": "wa", "r": "edft", "s": "awedxz", "t": "rfgy",
+    "u": "yhji", "v": "cfgb", "w": "qase", "x": "zsdc", "y": "tghu",
+    "z": "asx",
+}
+
+
 class StealthPage:
     """
     Represents a single page/tab in the stealth browser.
@@ -1010,6 +1023,30 @@ class StealthPage:
 
         self._mouse_x, self._mouse_y = x, y
 
+    async def idle(self, duration: float):
+        """
+        Hold roughly still for `duration` seconds like a real user
+        reading or waiting for a page to finish something, rather than
+        going completely motionless — a browser that emits zero input
+        events for many seconds (e.g. a bare `asyncio.sleep()` while
+        waiting for an async page computation) is itself an unusual
+        signal; real users make small, unconscious mouse corrections
+        even while not actively doing anything. Jiggles are dispatched
+        via move_mouse_to, so they're curved-path movements themselves,
+        not instant jumps.
+        """
+
+        elapsed = 0.0
+        while elapsed < duration:
+            step = min(random.uniform(0.6, 2.0), duration - elapsed)
+            await asyncio.sleep(step)
+            elapsed += step
+
+            if elapsed < duration and random.random() < 0.6:
+                jitter_x = self._mouse_x + random.uniform(-8, 8)
+                jitter_y = self._mouse_y + random.uniform(-8, 8)
+                await self.move_mouse_to(jitter_x, jitter_y)
+
     async def click(self, selector: str):
         """
         Click an element like a user would: move the mouse there along a
@@ -1038,25 +1075,124 @@ class StealthPage:
             "button": "left", "clickCount": 1,
         })
 
-    async def type_text(self, selector: str, text: str):
+    async def drag_and_drop(self, source_selector: str, target_selector: str):
+        """
+        Drag one element onto another like a user would: press at a
+        randomized point inside the source, move along a curved path
+        with the button held (every intermediate move carries
+        buttons=1, so dragover/dragenter handlers reading
+        event.buttons see it as actually held down — not just pressed
+        once and teleported), hover briefly over the target, then
+        release. Real CDP Input events go through the browser's actual
+        input pipeline, so a real HTML5 drag (draggable="true" +
+        dragstart/dragover/drop) is triggered the same way a genuine
+        mouse would, unlike dispatching synthetic DOM drag events
+        directly from JS.
+        """
+
+        source_box = await self._get_element_box(source_selector)
+        if not source_box:
+            logger.warning(f"drag_and_drop: source not found for selector {source_selector!r}")
+            return
+
+        target_box = await self._get_element_box(target_selector)
+        if not target_box:
+            logger.warning(f"drag_and_drop: target not found for selector {target_selector!r}")
+            return
+
+        start_x = source_box["x"] + source_box["width"] * random.uniform(0.3, 0.7)
+        start_y = source_box["y"] + source_box["height"] * random.uniform(0.3, 0.7)
+        end_x = target_box["x"] + target_box["width"] * random.uniform(0.3, 0.7)
+        end_y = target_box["y"] + target_box["height"] * random.uniform(0.3, 0.7)
+
+        await self.move_mouse_to(start_x, start_y)
+        await asyncio.sleep(random.uniform(0.03, 0.1))
+
+        await self._command("Input.dispatchMouseEvent", {
+            "type": "mousePressed", "x": start_x, "y": start_y,
+            "button": "left", "clickCount": 1,
+        })
+        await asyncio.sleep(random.uniform(0.05, 0.12))
+
+        distance = math.hypot(end_x - start_x, end_y - start_y)
+        steps = max(10, min(60, int(distance / 10)))
+        for px, py in self._curved_path(start_x, start_y, end_x, end_y, steps):
+            await self._command("Input.dispatchMouseEvent", {
+                "type": "mouseMoved", "x": px, "y": py,
+                "button": "left", "buttons": 1,
+            })
+            await asyncio.sleep(random.uniform(0.008, 0.025))
+
+        self._mouse_x, self._mouse_y = end_x, end_y
+        await asyncio.sleep(random.uniform(0.05, 0.15))  # hover over target before releasing
+
+        await self._command("Input.dispatchMouseEvent", {
+            "type": "mouseReleased", "x": end_x, "y": end_y,
+            "button": "left", "clickCount": 1,
+        })
+
+    async def _send_char(self, char: str):
+        """Dispatch one trusted printable-character key press."""
+
+        await self._command("Input.dispatchKeyEvent", {
+            "type": "keyDown", "text": char, "unmodifiedText": char, "key": char,
+        })
+        await asyncio.sleep(random.uniform(0.01, 0.04))
+        await self._command("Input.dispatchKeyEvent", {
+            "type": "keyUp", "text": char, "unmodifiedText": char, "key": char,
+        })
+
+    async def _send_backspace(self):
+        """
+        Dispatch a trusted Backspace press. Backspace has no associated
+        text to insert, so — matching CDP's own convention for
+        non-printable/control keys (the same one Puppeteer's key
+        handling uses) — this is "rawKeyDown", not "keyDown", with the
+        Windows virtual-key code Chromium's key handling actually keys
+        off of for control keys, rather than the `text`/`key` string
+        alone.
+        """
+
+        await self._command("Input.dispatchKeyEvent", {
+            "type": "rawKeyDown", "key": "Backspace", "code": "Backspace",
+            "windowsVirtualKeyCode": 8, "nativeVirtualKeyCode": 8,
+        })
+        await asyncio.sleep(random.uniform(0.01, 0.04))
+        await self._command("Input.dispatchKeyEvent", {
+            "type": "keyUp", "key": "Backspace", "code": "Backspace",
+            "windowsVirtualKeyCode": 8, "nativeVirtualKeyCode": 8,
+        })
+
+    async def type_text(self, selector: str, text: str, typo_rate: float = 0.04):
         """
         Type into a field like a user would: click it first to focus (real
         users don't teleport focus in), then dispatch trusted per-character
         key events with jittered inter-key delay and occasional longer
         pauses — a single .value= assignment is instant and untrusted.
+
+        Occasionally (typo_rate, default 4% per alphabetic character)
+        hits a key physically adjacent to the intended one on a QWERTY
+        layout, pauses as if noticing, backspaces it, then continues
+        with the correct character — perfectly clean, instant typing
+        is itself an automation tell.
         """
 
         await self.click(selector)
         await asyncio.sleep(random.uniform(0.1, 0.3))
 
         for char in text:
-            await self._command("Input.dispatchKeyEvent", {
-                "type": "keyDown", "text": char, "unmodifiedText": char, "key": char,
-            })
-            await asyncio.sleep(random.uniform(0.01, 0.04))
-            await self._command("Input.dispatchKeyEvent", {
-                "type": "keyUp", "text": char, "unmodifiedText": char, "key": char,
-            })
+            if char.isalpha() and random.random() < typo_rate:
+                adjacent = _QWERTY_ADJACENCY.get(char.lower())
+                if adjacent:
+                    typo_char = random.choice(adjacent)
+                    if char.isupper():
+                        typo_char = typo_char.upper()
+                    await self._send_char(typo_char)
+                    await asyncio.sleep(random.uniform(0.08, 0.22))  # notice the mistake
+                    await self._send_backspace()
+                    await asyncio.sleep(random.uniform(0.05, 0.15))
+
+            await self._send_char(char)
 
             delay = random.uniform(0.05, 0.18)
             if random.random() < 0.08:
@@ -1068,7 +1204,10 @@ class StealthPage:
         Scroll to the bottom like a user would: variable-sized wheel ticks
         with variable delay and occasional reading pauses, instead of a
         perfectly uniform step/interval — uniform scrolling is itself a
-        detectable signal.
+        detectable signal. Occasionally scrolls back up a bit too, like
+        someone re-reading a line they just passed — a scroll that only
+        ever moves one direction for an entire page is itself an
+        unusually mechanical pattern.
         """
 
         scrolled = 0
@@ -1090,6 +1229,16 @@ class StealthPage:
 
             if random.random() < 0.1:
                 await asyncio.sleep(random.uniform(0.4, 1.2))  # reading pause
+
+            if random.random() < 0.12:
+                back_delta = random.randint(80, 220)
+                await self._command("Input.dispatchMouseEvent", {
+                    "type": "mouseWheel",
+                    "x": self._mouse_x, "y": self._mouse_y,
+                    "deltaX": 0, "deltaY": -back_delta,
+                })
+                scrolled = max(0, scrolled - back_delta)
+                await asyncio.sleep(random.uniform(0.3, 0.9))
 
             height = await self.evaluate("document.body.scrollHeight")
     
