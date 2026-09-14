@@ -898,17 +898,37 @@ class StealthPage:
         
         return result.get("result", {}).get("value")
     
-    async def screenshot(self, filepath: str):
-        """Take screenshot"""
-        
-        result = await self._command("Page.captureScreenshot", {
-            "format": "png"
-        })
-        
+    async def screenshot(self, filepath: str, full_page: bool = True):
+        """
+        Take a screenshot.
+
+        full_page=True (default) captures the entire scrollable page via
+        Page.getLayoutMetrics + a clip covering the full content size —
+        plain Page.captureScreenshot with no clip only grabs the current
+        viewport, which silently truncated CreepJS's report (its device/
+        CPU/GPU section sits below the fold on a 1920x1080 viewport).
+        """
+
+        params = {"format": "png"}
+
+        if full_page:
+            metrics = await self._command("Page.getLayoutMetrics")
+            content_size = metrics.get("cssContentSize") or metrics["contentSize"]
+            params["clip"] = {
+                "x": 0,
+                "y": 0,
+                "width": content_size["width"],
+                "height": content_size["height"],
+                "scale": 1,
+            }
+            params["captureBeyondViewport"] = True
+
+        result = await self._command("Page.captureScreenshot", params)
+
         import base64
         with open(filepath, "wb") as f:
             f.write(base64.b64decode(result["data"]))
-        
+
         logger.info(f"  Screenshot saved: {filepath}")
     
     async def _get_element_box(self, selector: str) -> Optional[Dict[str, float]]:
