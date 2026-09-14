@@ -10,6 +10,7 @@ Provides fallback for unresolvable IPs.
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -87,9 +88,28 @@ class GeoIPResolver:
     
     def __init__(self, db_path: str = "./data/geoip/GeoLite2-City.mmdb"):
         self.db_path = Path(db_path)
+
+        # db_path here is whatever config/settings.yaml's geoip.database_path
+        # says -- a bare, CWD-relative string, unlike every *bundled* config
+        # file in this package (fingerprints.json, locales.json, ...), which
+        # are resolved via _PACKAGE_DIR. That's deliberate: the GeoLite2
+        # .mmdb is never shipped inside the package (MaxMind's license
+        # prohibits redistributing it -- see the root .gitignore), so there's
+        # no package-relative location to resolve it to. But it does mean a
+        # pip-installed jbium run from any directory other than one that
+        # happens to have its own ./data/geoip/ silently never finds a real
+        # database and degrades to the much less accurate fallback resolver.
+        # Mirror platform_detect.find_browser_binary's STEALTH_BROWSER_PATH
+        # convention for this same class of "real file the package can't
+        # ship" problem: let an explicit env var override a missing default.
+        if not self.db_path.exists():
+            env_path = os.environ.get("STEALTH_GEOIP_DB_PATH")
+            if env_path and Path(env_path).exists():
+                self.db_path = Path(env_path)
+
         self._reader = None
         self._locale_data = self._load_locale_data()
-        
+
         if HAS_GEOIP2 and self.db_path.exists():
             self._reader = geoip2.database.Reader(str(self.db_path))
             logger.info(f"GeoIP database loaded: {self.db_path}")
@@ -216,8 +236,8 @@ class GeoIPResolver:
             currency=locale_info.get("currency", "USD"),
             date_format=locale_info.get("date_format", "MM/DD/YYYY"),
             ip_type=ip_type,
-            asn=f"AS{response.autonomous_system_number or 0}",
-            isp=response.autonomous_system_organization or "Unknown",
+            asn=f"AS{response.traits.autonomous_system_number or 0}",
+            isp=response.traits.autonomous_system_organization or "Unknown",
             organization=response.traits.organization or "Unknown",
             common_screen_resolutions=locale_info.get("common_resolutions", []),
             common_fonts=locale_info.get("common_fonts", []),
@@ -305,7 +325,7 @@ class GeoIPResolver:
     def _classify_ip(self, ip: str, response) -> IPType:
         """Classify the type of IP address"""
         
-        org = (response.autonomous_system_organization or "").lower()
+        org = (response.traits.autonomous_system_organization or "").lower()
         
         # Known hosting providers
         hosting = [
