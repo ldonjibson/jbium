@@ -551,6 +551,18 @@ class Jbium:
         # Build command line args
         args = [self.browser_path]
 
+        # Chrome refuses to start as root at all without --no-sandbox
+        # ("Running as root without --no-sandbox is not supported",
+        # zygote_host_impl_linux.cc) — common on rented root-only boxes
+        # and containers. Auto-detect rather than relying on someone
+        # remembering to add it to config/settings.yaml's extra_args: an
+        # earlier fix this session only hand-edited one box's local copy
+        # and never made it into source (either driver/ or the packaged
+        # config/settings.yaml shipped via pip), so a fresh install on a
+        # new root box hit the exact same crash again.
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            args.append("--no-sandbox")
+
         # User-Agent
         args.append(f"--user-agent={device_profile.user_agent}")
 
