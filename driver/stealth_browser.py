@@ -1073,7 +1073,11 @@ class StealthPage:
 
         while scrolled < height:
             delta = random.randint(250, 650)
-            await self._command("Input.dispatchMouseWheelEvent", {
+            # There is no Input.dispatchMouseWheelEvent in the real CDP
+            # protocol (confirmed live: "-32601 method not found") — wheel
+            # scrolling is one of the several event types
+            # Input.dispatchMouseEvent itself handles via its "type" field.
+            await self._command("Input.dispatchMouseEvent", {
                 "type": "mouseWheel",
                 "x": self._mouse_x, "y": self._mouse_y,
                 "deltaX": 0, "deltaY": delta,
