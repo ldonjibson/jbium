@@ -24,9 +24,16 @@ import asyncio
 import sys
 from pathlib import Path
 
+# Works two ways: from inside a full repo checkout (driver.stealth_browser,
+# via the repo-root sys.path insert below) or after `pip install jbium`
+# on a fresh server (jbium.stealth_browser, a real installed package --
+# no sys.path hack needed, but harmless if already on sys.path).
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from driver.stealth_browser import Jbium, get_random_webshare_proxy
+try:
+    from driver.stealth_browser import Jbium, get_random_webshare_proxy
+except ModuleNotFoundError:
+    from jbium.stealth_browser import Jbium, get_random_webshare_proxy
 
 TARGET_URL = "https://example.com"
 
