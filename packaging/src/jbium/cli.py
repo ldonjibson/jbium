@@ -14,13 +14,11 @@ This mirrors scripts/package_all.py's own naming convention exactly
 is fetchable by this CLI with no translation step.
 
 `jbium fetch-geoip` downloads the GeoIP databases GeoIPResolver uses
-(MaxMind's GeoLite2-City + GeoLite2-ASN with a license key, or their
-free DB-IP equivalents without one) to ~/.cache/jbium/geoip/ — the
+(MaxMind's GeoLite2-City + GeoLite2-ASN with a license key, or a free
+no-signup mirror without one) to ~/.cache/jbium/geoip/ — the
 pip-installed-package equivalent of scripts/download_geoip.sh, which
 only exists in the from-source repo tree and isn't shipped with this
-package. Kept logically in sync with that script's two download paths;
-see its own comments for the MaxMind-endpoint and DB-IP-URL specifics
-this mirrors.
+package.
 """
 
 import gzip
@@ -33,7 +31,6 @@ import tarfile
 import urllib.error
 import urllib.request
 import zipfile
-from datetime import date
 from pathlib import Path
 
 from jbium.platform_detect import detect_platform_info, Platform, Architecture
@@ -235,19 +232,17 @@ def _fetch_maxmind_edition(edition: str, license_key: str, dest: Path) -> None:
         tmp_tar.unlink(missing_ok=True)
 
 
-def _fetch_dbip_edition(name: str, month: str, dest: Path) -> None:
-    """Download one free DB-IP Lite edition and gunzip it to `dest`."""
-
-    tmp_gz = dest.with_name(dest.name + ".gz")
-    url = f"https://download.db-ip.com/free/{name}-{month}.mmdb.gz"
-    print(f"  Downloading {name}...")
-    _download(url, tmp_gz)
-
-    try:
-        with gzip.open(tmp_gz, "rb") as f_in, open(dest, "wb") as f_out:
-            shutil.copyfileobj(f_in, f_out)
-    finally:
-        tmp_gz.unlink(missing_ok=True)
+_FREE_MIRROR_URLS = {
+    "GeoLite2-City": "https://git.io/GeoLite2-City.mmdb",
+    "GeoLite2-ASN": "https://git.io/GeoLite2-ASN.mmdb",
+}
+# git.io shortlinks to github.com/P3TERX/GeoLite.mmdb's daily-updated
+# release mirror of MaxMind's real GeoLite2 databases -- no signup, no
+# license key, no date-guessing URL like DB-IP needed (that was two
+# separate real bugs: a wrong date format, and DB-IP's Cloudflare front
+# blocking Python's default User-Agent). Verified live: both git.io
+# links resolve (301 -> github.com/.../releases/latest/download/...)
+# and serve a bare .mmdb, no gzip/tar wrapping.
 
 
 def _fetch_custom_url(url: str, dest: Path) -> None:
@@ -306,7 +301,9 @@ def fetch_geoip(
     1. An explicit city_url/asn_url (or GEOIP_CITY_URL/GEOIP_ASN_URL)
        -- e.g. your own CDN or internal mirror.
     2. A MaxMind license_key (or GEOIP_LICENSE_KEY), if given.
-    3. The free DB-IP equivalent, as a last resort needing no signup.
+    3. The free git.io/GeoLite.mmdb mirror, as a last resort needing
+       no signup (see _FREE_MIRROR_URLS above for why this one and not
+       DB-IP, which this replaced).
     """
 
     geoip_dir = _geoip_dir()
@@ -322,7 +319,6 @@ def fetch_geoip(
     city_url = city_url or os.environ.get("GEOIP_CITY_URL")
     asn_url = asn_url or os.environ.get("GEOIP_ASN_URL")
     license_key = license_key or os.environ.get("GEOIP_LICENSE_KEY")
-    month = date.today().strftime("%Y-%m")
 
     if city_url:
         print("  Using custom source for GeoLite2-City...")
@@ -331,9 +327,8 @@ def fetch_geoip(
         print("  Using MaxMind license key for GeoLite2-City...")
         _fetch_maxmind_edition("GeoLite2-City", license_key, city_path)
     else:
-        print("  Using free DB-IP database for City (no license key)...")
-        print("  For better accuracy, pass --city-url/--license-key or set GEOIP_CITY_URL/GEOIP_LICENSE_KEY")
-        _fetch_dbip_edition("dbip-city-lite", month, city_path)
+        print("  Using free GeoLite2-City mirror (no license key)...")
+        _fetch_custom_url(_FREE_MIRROR_URLS["GeoLite2-City"], city_path)
 
     if asn_url:
         print("  Using custom source for GeoLite2-ASN...")
@@ -342,9 +337,8 @@ def fetch_geoip(
         print("  Using MaxMind license key for GeoLite2-ASN...")
         _fetch_maxmind_edition("GeoLite2-ASN", license_key, asn_path)
     else:
-        print("  Using free DB-IP database for ASN (no license key)...")
-        print("  For better accuracy, pass --asn-url/--license-key or set GEOIP_ASN_URL/GEOIP_LICENSE_KEY")
-        _fetch_dbip_edition("dbip-asn-lite", month, asn_path)
+        print("  Using free GeoLite2-ASN mirror (no license key)...")
+        _fetch_custom_url(_FREE_MIRROR_URLS["GeoLite2-ASN"], asn_path)
 
     print(f"OK: GeoIP databases ready at {geoip_dir}")
     return geoip_dir
@@ -373,7 +367,7 @@ def main(argv=None) -> int:
     )
     geoip_p.add_argument(
         "--license-key", default=None,
-        help="MaxMind license key (uses free DB-IP data if omitted; "
+        help="MaxMind license key (uses free git.io/GeoLite.mmdb mirror if omitted; "
              "also read from GEOIP_LICENSE_KEY)",
     )
     geoip_p.add_argument(

@@ -46,34 +46,24 @@ if [ -n "$GEOIP_LICENSE_KEY" ]; then
     rm -f "$DATA_DIR/GeoLite2-ASN.tar.gz"
 
 else
-    # Using free DB-IP (no license needed). Accuracy caveat: DB-IP's
-    # free "Lite" tier is intentionally less precise than MaxMind's
-    # GeoLite2 (coarser city-level resolution, no VPN/hosting-provider
-    # detection data) -- fine as a no-signup fallback, not a drop-in
-    # equivalent.
-    echo "  Using free DB-IP database (no license key)..."
-    echo "  For better accuracy, set GEOIP_LICENSE_KEY environment variable"
+    # Using the free git.io/GeoLite.mmdb mirror (no license needed) --
+    # git.io shortlinks to github.com/P3TERX/GeoLite.mmdb's
+    # daily-updated release mirror of MaxMind's real GeoLite2 databases.
+    # Replaced the previous DB-IP fallback: DB-IP needed a guessed
+    # YYYY-MM dated URL (already bit us once with a wrong date format)
+    # and its Cloudflare-fronted host blocks non-browser User-Agents on
+    # some clients. This mirror serves the real GeoLite2 data directly,
+    # no date-guessing, no signup. Verified live (2026-09-16): both
+    # links 301 straight to a working .mmdb download.
+    echo "  Using free GeoLite2 mirror (no license key)..."
+    echo "  For better accuracy/freshness, set GEOIP_LICENSE_KEY environment variable"
     echo ""
 
-    # DB-IP publishes one dated file per month at a URL keyed by
-    # YYYY-MM (with a hyphen) -- the previous $(date +%Y%m) (no
-    # hyphen) 404'd on every run, unconditionally, confirmed live.
-    DBIP_MONTH="$(date +%Y-%m)"
+    echo "  Downloading GeoLite2-City..."
+    curl -sSL "https://git.io/GeoLite2-City.mmdb" -o "$DATA_DIR/GeoLite2-City.mmdb"
 
-    # DB-IP City Lite (curl, not wget -- consistent with the MaxMind
-    # branch above, and doesn't add a second HTTP-client dependency)
-    echo "  Downloading dbip-city-lite..."
-    curl -sSL "https://download.db-ip.com/free/dbip-city-lite-${DBIP_MONTH}.mmdb.gz" \
-        -o "$DATA_DIR/dbip-city-lite.mmdb.gz"
-    gunzip -f "$DATA_DIR/dbip-city-lite.mmdb.gz"
-    mv "$DATA_DIR/dbip-city-lite.mmdb" "$DATA_DIR/GeoLite2-City.mmdb"
-
-    # DB-IP ASN Lite
-    echo "  Downloading dbip-asn-lite..."
-    curl -sSL "https://download.db-ip.com/free/dbip-asn-lite-${DBIP_MONTH}.mmdb.gz" \
-        -o "$DATA_DIR/dbip-asn-lite.mmdb.gz"
-    gunzip -f "$DATA_DIR/dbip-asn-lite.mmdb.gz"
-    mv "$DATA_DIR/dbip-asn-lite.mmdb" "$DATA_DIR/GeoLite2-ASN.mmdb"
+    echo "  Downloading GeoLite2-ASN..."
+    curl -sSL "https://git.io/GeoLite2-ASN.mmdb" -o "$DATA_DIR/GeoLite2-ASN.mmdb"
 fi
 
 echo ""

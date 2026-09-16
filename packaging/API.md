@@ -151,29 +151,23 @@ redistributing it).
 
 | Argument | Required | Default | Behavior |
 |---|---|---|---|
-| `--license-key` | No | `None` (also read from `GEOIP_LICENSE_KEY`) | A MaxMind license key — free to generate at [maxmind.com](https://www.maxmind.com/en/accounts/current/license-key). Gets you the real GeoLite2 data. Without one, falls back to DB-IP's free "Lite" tier (no signup, but coarser city-level accuracy and no timezone field). |
+| `--license-key` | No | `None` (also read from `GEOIP_LICENSE_KEY`) | A MaxMind license key — free to generate at [maxmind.com](https://www.maxmind.com/en/accounts/current/license-key). Without one, falls back to the free `git.io/GeoLite.mmdb` mirror (no signup, genuine GeoLite2 data, just refreshed on someone else's schedule instead of pulled fresh from MaxMind). |
 | `--city-url` | No | `None` (also read from `GEOIP_CITY_URL`) | Fetch the City database from an arbitrary URL instead — your own CDN, an internal mirror, a public community mirror. Takes priority over `--license-key` for this one file. Shape is inferred from the URL's suffix: bare `.mmdb` is saved as-is, `.mmdb.gz` is gunzipped, `.tar.gz` is unwrapped the same way a MaxMind archive is. |
 | `--asn-url` | No | `None` (also read from `GEOIP_ASN_URL`) | Same as `--city-url`, for the ASN database. |
 | `--force` | No | `False` | Re-download even if both databases already exist in the cache. |
 
 Each database's source is chosen independently: its own `--*-url` first,
-then `--license-key`, then the DB-IP default — so e.g. a custom `--city-url`
-with no `--asn-url` still gets a working ASN database via DB-IP.
+then `--license-key`, then the free mirror default — so e.g. a custom
+`--city-url` with no `--asn-url` still gets a working ASN database via
+the mirror.
 
-Example, pointing at a public GeoLite2 mirror instead of signing up for
-a MaxMind account (verified working — genuine `GeoLite2-City`/
-`GeoLite2-ASN` data, not a substitute):
-
-```bash
-jbium fetch-geoip \
-  --city-url "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb" \
-  --asn-url  "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-ASN.mmdb"
-```
-
-This particular mirror is a third-party redistribution with no
-official MaxMind backing — fine as a convenience or a fallback, not
-something to depend on for production without your own mirror or a
-real MaxMind license key.
+The default no-signup source (`https://git.io/GeoLite2-City.mmdb` /
+`https://git.io/GeoLite2-ASN.mmdb`) redirects to
+[P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb), a
+daily-updated third-party redistribution of MaxMind's real GeoLite2
+data (verified working — genuine data, not a substitute). It has no
+official MaxMind backing, so for production use without a MaxMind
+account, point `--city-url`/`--asn-url` at your own mirror instead.
 
 ---
 
