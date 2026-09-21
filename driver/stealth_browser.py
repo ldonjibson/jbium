@@ -908,7 +908,10 @@ chrome.webRequest.onAuthRequired.addListener(
             return await asyncio.wait_for(fut, timeout=30)
         except asyncio.TimeoutError:
             self._ws_pending.pop(message_id, None)
-            raise
+            # Bare asyncio.TimeoutError has no message (str(e) == "") --
+            # naming the command that actually hung turns a useless
+            # "TimeoutError: " in the logs into something diagnosable.
+            raise TimeoutError(f"CDP command {method!r} timed out after 30s (browser-level)") from None
 
 
 # Keys physically adjacent to each letter on a QWERTY layout — the
@@ -1036,7 +1039,11 @@ class StealthPage:
             return await asyncio.wait_for(fut, timeout=30)
         except asyncio.TimeoutError:
             self._pending.pop(msg_id, None)
-            raise
+            # Bare asyncio.TimeoutError has no message (str(e) == "") --
+            # naming the command and page that actually hung turns a
+            # useless "TimeoutError: " in the logs into something
+            # diagnosable.
+            raise TimeoutError(f"CDP command {method!r} timed out after 30s (page {self.target_id})") from None
 
     # ─────────────────────────────────────────────
     # Network capture
