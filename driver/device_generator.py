@@ -21,6 +21,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_DRIVER_DIR = Path(__file__).parent  # .../jbium/driver
+
 
 @dataclass
 class DeviceProfile:
@@ -76,7 +78,14 @@ class DeviceGenerator:
     3. GeoIP-appropriate (matches OS distribution for the region)
     """
     
-    def __init__(self, templates_path: str = "config/fingerprints.json"):
+    def __init__(self, templates_path: str = None):
+        # Default resolves relative to this file's location (the repo's
+        # config/, a sibling of driver/), not the process's CWD --
+        # "config/fingerprints.json" alone only worked when the process
+        # happened to be launched from the jbium repo root itself, which
+        # isn't true for e.g. a CI job that checks out jbium as a sibling
+        # of a different repo and runs a script from there.
+        templates_path = templates_path or str(_DRIVER_DIR.parent / "config" / "fingerprints.json")
         self.templates_path = Path(templates_path)
         self.templates = self._load_templates()
         

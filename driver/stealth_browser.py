@@ -104,9 +104,12 @@ class Jbium:
             ),
         )
         self.fingerprint_manager = FingerprintManager()
-        self.device_generator = DeviceGenerator(
-            templates_path="config/fingerprints.json"
-        )
+        # No explicit templates_path -- let DeviceGenerator use its own
+        # default, which resolves relative to the repo (driver/'s
+        # sibling config/), not the process's CWD. Passing a bare
+        # "config/fingerprints.json" string here would silently shadow
+        # that and reintroduce the same CWD-dependent bug.
+        self.device_generator = DeviceGenerator()
         
         # State
         self._session: Optional[StealthSession] = None

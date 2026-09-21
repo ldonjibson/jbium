@@ -19,6 +19,8 @@ import json
 
 logger = logging.getLogger(__name__)
 
+_DRIVER_DIR = Path(__file__).parent  # .../jbium/driver
+
 try:
     import geoip2.database
     HAS_GEOIP2 = True
@@ -95,15 +97,27 @@ class GeoIPResolver:
         # live anywhere, not just at this CWD-relative default. Mirrors
         # the STEALTH_BROWSER_PATH convention used for the browser binary,
         # the same class of "real file this repo can't ship" problem.
+        #
+        # Falls back to `jbium fetch-geoip`'s (the packaging/ CLI) own
+        # download location if no env var is set either -- the primary
+        # case for a CI job with no from-source data/ directory alongside
+        # this driver. packaging/src/jbium/geoip_resolver.py already does
+        # this; this driver/ copy hadn't been kept in sync with it.
+        cache_geoip_dir = Path.home() / ".cache" / "jbium" / "geoip"
+
         if not self.db_path.exists():
             env_path = os.environ.get("STEALTH_GEOIP_DB_PATH")
             if env_path and Path(env_path).exists():
                 self.db_path = Path(env_path)
+            elif (cache_geoip_dir / "GeoLite2-City.mmdb").exists():
+                self.db_path = cache_geoip_dir / "GeoLite2-City.mmdb"
 
         if not self.asn_db_path.exists():
             env_asn_path = os.environ.get("STEALTH_GEOIP_ASN_DB_PATH")
             if env_asn_path and Path(env_asn_path).exists():
                 self.asn_db_path = Path(env_asn_path)
+            elif (cache_geoip_dir / "GeoLite2-ASN.mmdb").exists():
+                self.asn_db_path = cache_geoip_dir / "GeoLite2-ASN.mmdb"
 
         self._reader = None
         self._asn_reader = None
@@ -133,7 +147,7 @@ class GeoIPResolver:
     def _load_locale_data(self) -> dict:
         """Load locale mappings from config"""
         
-        locale_file = Path("config/locales.json")
+        locale_file = _DRIVER_DIR.parent / "config" / "locales.json"
         
         if locale_file.exists():
             with open(locale_file) as f:
