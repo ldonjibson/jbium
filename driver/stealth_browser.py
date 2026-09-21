@@ -400,14 +400,11 @@ class Jbium:
 
         from driver.platform_detect import find_browser_binary
 
-        try:
-            return str(find_browser_binary())
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                "Stealth browser not found. Build it first "
-                "(scripts/build_linux.sh, build_macos.sh, or "
-                "build_windows.bat) or set binary_path in config."
-            )
+        # find_browser_binary() already raises a FileNotFoundError with
+        # the full list of searched paths and how to fix it (`jbium
+        # fetch` vs. building from source) -- let it propagate as-is
+        # instead of replacing it with a shorter, less useful message.
+        return str(find_browser_binary())
     
     async def _get_proxy_ip(self, proxy_url: str) -> str:
         """Get the actual exit IP of the proxy"""

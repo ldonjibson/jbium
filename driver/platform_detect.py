@@ -132,9 +132,19 @@ def find_browser_binary(
     # Build search paths
     if search_paths is None:
         home = Path.home()
+        fetch_cache = home / ".cache" / "jbium" / "bin"
         build_out = home / "jbium" / "chromium" / "src" / "out" / "Release"
 
         search_paths = [
+            # `jbium fetch` (the packaging/ CLI) downloads the prebuilt
+            # release binary here -- the primary location when there's no
+            # from-source build alongside this driver, e.g. a CI job that
+            # runs `jbium fetch` instead of building Chromium itself.
+            # packaging/src/jbium/platform_detect.py already checks this
+            # first; this driver/ copy hadn't been kept in sync with that.
+            fetch_cache / info.binary_name,
+            fetch_cache / "Jbium.app/Contents/MacOS/jbium",  # macOS .app bundle
+
             # Raw build output — scripts/build_linux.sh, build_macos.sh, and
             # build_windows.bat all fetch Chromium to ~/jbium/chromium/src
             # and rename the compiled binary here, before any packaging step.
@@ -154,14 +164,16 @@ def find_browser_binary(
             Path("C:/Program Files/Jbium/jbium.exe"),  # Windows system
             Path("/Applications/Jbium.app/Contents/MacOS/jbium"),  # macOS
         ]
-    
+
     for path in search_paths:
         path = Path(path)
         if path.exists():
             return path
-    
+
     raise FileNotFoundError(
         f"Stealth browser binary ({info.binary_name}) not found.\n"
+        f"Run `jbium fetch` to download it, or build it yourself and set "
+        f"binary_path in config.\n"
         f"Searched:\n" + "\n".join(f"  {p}" for p in search_paths)
     )
 
