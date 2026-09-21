@@ -114,6 +114,13 @@ class Jbium:
         self._ws_connection = None
         self._pages: List[Dict] = []
         self._proxy_auth_extension_dir: Optional[str] = None
+
+        # Browser-level CDP dispatch (see _ws_reader_loop) — a
+        # pending-futures table keyed by message id, drained by a
+        # background reader task instead of each command doing its own
+        # blocking recv()-until-match loop.
+        self._ws_pending: Dict[int, asyncio.Future] = {}
+        self._ws_reader_task: Optional[asyncio.Task] = None
         
         logger.info(f"Jbium initialized")
         logger.info(f"  Browser: {self.browser_path}")
@@ -235,8 +242,7 @@ class Jbium:
     async def new_page(self) -> "StealthPage":
         """Create a new page/tab"""
         
-        if not self._ws_connection:
-            self._ws_connection = await websockets.connect(self._ws_url, max_size=None)
+        await self._ensure_browser_ws()
 
         # Create new target via CDP
         target_id = await self._cdp_command("Target.createTarget", {
@@ -311,6 +317,8 @@ class Jbium:
         
         # Close WebSocket
         if self._ws_connection:
+            if self._ws_reader_task:
+                self._ws_reader_task.cancel()
             await self._ws_connection.close()
         
         # Kill browser process
@@ -843,27 +851,64 @@ chrome.webRequest.onAuthRequired.addListener(
                 data = await response.json()
                 return data["webSocketDebuggerUrl"]
     
-    async def _cdp_command(self, method: str, params: dict = None) -> dict:
-        """Send CDP command"""
+    async def _ensure_browser_ws(self):
+        """Connect the browser-level CDP socket and start its reader task, once."""
 
         if not self._ws_connection:
             self._ws_connection = await websockets.connect(self._ws_url, max_size=None)
-        
+            self._ws_reader_task = asyncio.create_task(self._ws_reader_loop())
+
+    async def _ws_reader_loop(self):
+        """
+        Continuously drain the browser-level socket and resolve whichever
+        _cdp_command() future matches the incoming message's id. Replaces
+        the old recv()-until-match loop, which silently discarded any
+        id-less CDP event that arrived out of turn on this socket.
+        """
+
+        try:
+            async for raw in self._ws_connection:
+                data = json.loads(raw)
+                msg_id = data.get("id")
+                if msg_id is not None:
+                    fut = self._ws_pending.pop(msg_id, None)
+                    if fut and not fut.done():
+                        if "error" in data:
+                            fut.set_exception(RuntimeError(f"CDP error: {data['error']}"))
+                        else:
+                            fut.set_result(data.get("result", {}))
+        except Exception as e:
+            logger.debug(f"Browser CDP reader loop ended: {e}")
+            for fut in self._ws_pending.values():
+                if not fut.done():
+                    fut.set_exception(RuntimeError(f"CDP connection closed: {e}"))
+
+    async def _cdp_command(self, method: str, params: dict = None) -> dict:
+        """Send CDP command, resolved by the background reader loop."""
+
+        await self._ensure_browser_ws()
+
         message_id = random.randint(1, 999999)
+        while message_id in self._ws_pending:
+            message_id = random.randint(1, 999999)
+
+        fut = asyncio.get_running_loop().create_future()
+        self._ws_pending[message_id] = fut
+
         message = {
             "id": message_id,
             "method": method,
         }
         if params:
             message["params"] = params
-        
+
         await self._ws_connection.send(json.dumps(message))
-        
-        while True:
-            response = await self._ws_connection.recv()
-            data = json.loads(response)
-            if data.get("id") == message_id:
-                return data.get("result", {})
+
+        try:
+            return await asyncio.wait_for(fut, timeout=30)
+        except asyncio.TimeoutError:
+            self._ws_pending.pop(message_id, None)
+            raise
 
 
 # Keys physically adjacent to each letter on a QWERTY layout — the
@@ -898,6 +943,28 @@ class StealthPage:
         self.session = session
         self._message_id = 0
 
+        # CDP request/response dispatch — a background reader task drains
+        # the socket continuously so unsolicited events (no "id", e.g.
+        # Network.responseReceived) reach registered handlers instead of
+        # being silently discarded by a command's own recv()-until-match
+        # loop, which is what the old synchronous _command() design did.
+        self._pending: Dict[int, asyncio.Future] = {}
+        self._event_handlers: Dict[str, List] = {}
+        self._reader_task = asyncio.create_task(self._reader_loop())
+
+        # Network capture state, populated once enable_network_capture()
+        # registers handlers: requestId -> in-flight request metadata,
+        # resolved GraphQL bodies keyed by operationName, and any
+        # wait_for_graphql_response() callers already waiting on one.
+        self._network_enabled = False
+        self._request_meta: Dict[str, Dict] = {}
+        self._graphql_responses: Dict[str, Dict] = {}
+        self._graphql_waiters: Dict[str, asyncio.Future] = {}
+
+        # General in-flight request tracking (independent of GraphQL
+        # tagging above) -- backs goto(wait_until="networkidle").
+        self._inflight_requests: set = set()
+
         # Tracked cursor position, so mouse moves start from where the
         # "hand" actually is instead of teleporting in from nowhere.
         self._mouse_x = session.device_profile.screen_width * random.uniform(0.3, 0.7)
@@ -905,51 +972,311 @@ class StealthPage:
 
         logger.info(f"New page created: {target_id}")
     
+    async def _reader_loop(self):
+        """
+        Continuously drain this page's socket. A message with an "id" is
+        a command's response, resolved through _pending; a message with
+        only a "method" is an unsolicited CDP event (e.g.
+        Network.responseReceived), fanned out to whatever handlers
+        enable_network_capture() registered. The old _command() did its
+        own recv()-until-match loop per call, which had no code path for
+        an event to ever reach anything — this reader is what makes
+        network capture possible at all.
+        """
+
+        try:
+            async for raw in self.ws:
+                data = json.loads(raw)
+                msg_id = data.get("id")
+                if msg_id is not None:
+                    fut = self._pending.pop(msg_id, None)
+                    if fut and not fut.done():
+                        if "error" in data:
+                            fut.set_exception(RuntimeError(f"CDP error: {data['error']}"))
+                        else:
+                            fut.set_result(data.get("result", {}))
+                    continue
+                method = data.get("method")
+                if method:
+                    for handler in self._event_handlers.get(method, ()):
+                        try:
+                            handler(data.get("params", {}))
+                        except Exception:
+                            logger.exception(f"Error in handler for {method}")
+        except Exception as e:
+            logger.debug(f"Page CDP reader loop ended ({self.target_id}): {e}")
+            for fut in self._pending.values():
+                if not fut.done():
+                    fut.set_exception(RuntimeError(f"CDP connection closed: {e}"))
+
+    def on(self, method: str, handler):
+        """Register a callback for a raw CDP event method (e.g. 'Network.responseReceived')."""
+
+        self._event_handlers.setdefault(method, []).append(handler)
+
     async def _command(self, method: str, params: dict = None) -> dict:
-        """Send CDP command to this page"""
-        
+        """Send CDP command to this page, resolved by the background reader loop."""
+
         self._message_id += 1
+        msg_id = self._message_id
+
+        fut = asyncio.get_running_loop().create_future()
+        self._pending[msg_id] = fut
+
         message = {
-            "id": self._message_id,
+            "id": msg_id,
             "method": method,
         }
         if params:
             message["params"] = params
-        
+
         await self.ws.send(json.dumps(message))
-        
-        while True:
-            response = await asyncio.wait_for(self.ws.recv(), timeout=30)
-            data = json.loads(response)
-            if data.get("id") == self._message_id:
-                if "error" in data:
-                    raise RuntimeError(f"CDP error: {data['error']}")
-                return data.get("result", {})
-    
-    async def goto(self, url: str, wait_until: str = "load", timeout: int = 30):
-        """Navigate to URL"""
-        
-        logger.info(f"  goto: {url}")
-        
-        wait_for_map = {
-            "load": "loadEventFired",
-            "domcontentloaded": "domContentEventFired",
-            "networkidle": "networkIdle",  # Requires Network.enable
+
+        try:
+            return await asyncio.wait_for(fut, timeout=30)
+        except asyncio.TimeoutError:
+            self._pending.pop(msg_id, None)
+            raise
+
+    # ─────────────────────────────────────────────
+    # Network capture
+    # ─────────────────────────────────────────────
+
+    async def enable_network_capture(self):
+        """
+        Turn on Network domain events and start tracking GraphQL
+        request/response pairs by operationName, so callers can await
+        wait_for_graphql_response("SomeQuery") instead of relying on
+        DOM state for data that only ever exists in a GraphQL payload
+        (e.g. VRBO's 30-day pricing calendar). Idempotent.
+        """
+
+        if self._network_enabled:
+            return
+
+        self.on("Network.requestWillBeSent", self._on_request_will_be_sent)
+        self.on("Network.responseReceived", self._on_response_received)
+        self.on("Network.loadingFinished", self._on_loading_finished)
+        self.on("Network.loadingFailed", self._on_loading_failed)
+
+        # Separate, unconditional in-flight tracking (on() supports
+        # multiple handlers per event) -- feeds _wait_for_network_idle,
+        # independent of whether a given request ever gets tagged with a
+        # GraphQL operationName.
+        self.on("Network.requestWillBeSent", self._track_request_started)
+        self.on("Network.loadingFinished", self._track_request_finished)
+        self.on("Network.loadingFailed", self._track_request_finished)
+
+        await self._command("Network.enable")
+        self._network_enabled = True
+
+    def _extract_operation_name(self, post_data: Optional[str]) -> Optional[str]:
+        if not post_data:
+            return None
+        try:
+            body = json.loads(post_data)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(body, list):
+            # Batched GraphQL requests — only the first operation is
+            # tracked, matching the single-query POSTs the ported
+            # detail/pricing extraction actually sends.
+            body = body[0] if body else {}
+        return body.get("operationName") if isinstance(body, dict) else None
+
+    def _on_request_will_be_sent(self, params: Dict):
+        request = params.get("request", {})
+        request_id = params["requestId"]
+        post_data = request.get("postData")
+        if post_data:
+            self._tag_operation(request_id, post_data, request.get("url"))
+        elif request.get("hasPostData"):
+            # CDP omits postData inline above its own size threshold,
+            # flagging hasPostData instead -- GraphQL variables (date
+            # ranges, filters) can push a request over that, so without
+            # this fallback a large-enough query would silently never
+            # get matched to its response.
+            asyncio.create_task(
+                self._fetch_and_tag_operation(request_id, request.get("url"))
+            )
+
+    def _tag_operation(self, request_id: str, post_data: str, url: Optional[str]):
+        operation_name = self._extract_operation_name(post_data)
+        if operation_name:
+            self._request_meta[request_id] = {
+                "operation_name": operation_name,
+                "url": url,
+            }
+
+    async def _fetch_and_tag_operation(self, request_id: str, url: Optional[str]):
+        try:
+            result = await self._command("Network.getRequestPostData", {"requestId": request_id})
+        except Exception as e:
+            logger.debug(f"Failed to fetch large postData for {request_id}: {e}")
+            return
+        self._tag_operation(request_id, result.get("postData", ""), url)
+
+    def _track_request_started(self, params: Dict):
+        self._inflight_requests.add(params["requestId"])
+
+    def _track_request_finished(self, params: Dict):
+        self._inflight_requests.discard(params["requestId"])
+
+    async def _wait_for_network_idle(self, timeout: float, idle_for: float = 0.5):
+        """
+        Wait until no requests have been in flight for `idle_for` seconds
+        (Playwright's own networkidle definition), or until `timeout`
+        total seconds have elapsed.
+        """
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if not self._inflight_requests:
+                await asyncio.sleep(idle_for)
+                if not self._inflight_requests:
+                    return
+                continue
+            await asyncio.sleep(0.1)
+        logger.warning("  goto: networkidle wait timed out with requests still in flight")
+
+    def _on_response_received(self, params: Dict):
+        meta = self._request_meta.get(params["requestId"])
+        if meta:
+            meta["status"] = params.get("response", {}).get("status")
+
+    def _on_loading_finished(self, params: Dict):
+        meta = self._request_meta.pop(params["requestId"], None)
+        if meta:
+            asyncio.create_task(self._resolve_graphql_response(params["requestId"], meta))
+
+    def _on_loading_failed(self, params: Dict):
+        meta = self._request_meta.pop(params["requestId"], None)
+        if meta:
+            waiter = self._graphql_waiters.pop(meta["operation_name"], None)
+            if waiter and not waiter.done():
+                waiter.set_exception(RuntimeError(
+                    f"Network request for {meta['operation_name']} failed: "
+                    f"{params.get('errorText')}"
+                ))
+
+    async def _resolve_graphql_response(self, request_id: str, meta: Dict):
+        try:
+            result = await self._command("Network.getResponseBody", {"requestId": request_id})
+        except Exception as e:
+            logger.warning(f"Failed to fetch response body for {meta['operation_name']}: {e}")
+            return
+
+        body_text = result.get("body", "")
+        if result.get("base64Encoded"):
+            import base64
+            body_text = base64.b64decode(body_text).decode("utf-8", errors="replace")
+
+        try:
+            body = json.loads(body_text)
+        except ValueError:
+            body = body_text
+
+        record = {
+            "operation_name": meta["operation_name"],
+            "url": meta.get("url"),
+            "status": meta.get("status"),
+            "body": body,
         }
-        
+        self._graphql_responses[meta["operation_name"]] = record
+
+        waiter = self._graphql_waiters.pop(meta["operation_name"], None)
+        if waiter and not waiter.done():
+            waiter.set_result(record)
+
+    async def wait_for_graphql_response(self, operation_name: str, timeout: float = 30) -> Dict:
+        """
+        Wait for a GraphQL response matching `operation_name` (matched
+        against the request body's own `operationName` field — the CDP
+        equivalent of Playwright's page.on('response', ...) + JSON body
+        inspection). Returns immediately if the response already
+        arrived. Requires enable_network_capture() to have been called
+        first (goto() does this automatically).
+        """
+
+        if operation_name in self._graphql_responses:
+            return self._graphql_responses[operation_name]
+
+        waiter = self._graphql_waiters.setdefault(
+            operation_name, asyncio.get_running_loop().create_future()
+        )
+        return await asyncio.wait_for(waiter, timeout=timeout)
+
+    def get_captured_graphql(self, operation_name: str) -> Optional[Dict]:
+        """
+        Non-blocking lookup of a GraphQL response that may already have
+        arrived passively (e.g. off the initial page load), without
+        opening a new wait. Returns None if it hasn't shown up (yet).
+        """
+        return self._graphql_responses.get(operation_name)
+
+    async def goto(self, url: str, wait_until: str = "load", timeout: int = 30):
+        """
+        Navigate to URL and wait for `wait_until`:
+          - "load" / "domcontentloaded": waits for the matching CDP Page
+            lifecycle event (Page.loadEventFired / Page.domContentEventFired)
+            via the reader loop's event dispatch.
+          - "networkidle": waits until no requests have been in flight
+            for 500ms (Playwright's own definition), up to `timeout`.
+
+        A short settle delay always follows the wait, since the lifecycle
+        event fires before client-side rendering has necessarily finished
+        painting, and callers are typically about to read the DOM.
+        """
+
+        logger.info(f"  goto: {url}")
+
+        wait_for_map = {
+            "load": "Page.loadEventFired",
+            "domcontentloaded": "Page.domContentEventFired",
+        }
+
         await self._command("Page.enable")
-        
+        await self.enable_network_capture()
+
+        load_fut = None
+        method = wait_for_map.get(wait_until)
+        if method:
+            # Registered synchronously, before Page.navigate is even
+            # sent, so there's no window where the real event could fire
+            # before anything is listening for it.
+            load_fut = asyncio.get_running_loop().create_future()
+
+            def _on_load_event(params, fut=load_fut):
+                if not fut.done():
+                    fut.set_result(params)
+
+            self.on(method, _on_load_event)
+
         result = await self._command("Page.navigate", {
             "url": url
         })
-        
+
         if "errorText" in result:
+            if method:
+                handlers = self._event_handlers.get(method)
+                if handlers and _on_load_event in handlers:
+                    handlers.remove(_on_load_event)
             raise RuntimeError(f"Navigation failed: {result['errorText']}")
-        
-        # Wait for load
-        await asyncio.sleep(3)  # Simple wait for now
-        # TODO: Implement proper event waiting
-    
+
+        if load_fut is not None:
+            try:
+                await asyncio.wait_for(load_fut, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.warning(f"  goto: timed out waiting for {wait_until} on {url}")
+            finally:
+                handlers = self._event_handlers.get(method)
+                if handlers and _on_load_event in handlers:
+                    handlers.remove(_on_load_event)
+        elif wait_until == "networkidle":
+            await self._wait_for_network_idle(timeout)
+
+        await asyncio.sleep(0.5)  # let client-side rendering settle
+
     async def get_content(self) -> str:
         """Get page HTML content"""
         
@@ -1251,6 +1578,21 @@ class StealthPage:
                 delay += random.uniform(0.2, 0.5)  # occasional "thinking" pause
             await asyncio.sleep(delay)
 
+    async def wheel(self, delta_x: float, delta_y: float):
+        """
+        Dispatch a single mouse-wheel tick at the current cursor position
+        — the same underlying CDP call scroll_to_bottom() uses, exposed
+        directly for callers that want a few deliberate scroll ticks
+        (e.g. light homepage browsing) rather than a full scroll-to-
+        bottom pass.
+        """
+
+        await self._command("Input.dispatchMouseEvent", {
+            "type": "mouseWheel",
+            "x": self._mouse_x, "y": self._mouse_y,
+            "deltaX": delta_x, "deltaY": delta_y,
+        })
+
     async def scroll_to_bottom(self):
         """
         Scroll to the bottom like a user would: variable-sized wheel ticks
@@ -1334,7 +1676,9 @@ class StealthPage:
     
     async def close(self):
         """Close this page"""
-        
+
+        if self._reader_task:
+            self._reader_task.cancel()
         try:
             await self.ws.close()
         except Exception:

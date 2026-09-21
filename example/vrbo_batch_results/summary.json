@@ -1,0 +1,230 @@
+[
+  {
+    "url": "https://www.vrbo.com/1457914?dateless=true",
+    "listing_id": "1457914",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "The Mockingbird Cottage - Charming little cottage for two in a perfect location!",
+    "h1": "The Mockingbird Cottage - Charming little cottage for two in a perfect location!",
+    "rating": null,
+    "reviewCount": "210",
+    "screenshot": "/tmp/vrbo_batch/screenshots/1457914.png",
+    "proxy_ip": "176.113.67.210",
+    "elapsed_sec": 15.1
+  },
+  {
+    "url": "https://www.vrbo.com/4682000?dateless=true",
+    "listing_id": "4682000",
+    "success": true,
+    "attempts": 2,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "The Main Street Bungalow - Downtown Bentonville",
+    "h1": "The Main Street Bungalow - Downtown Bentonville",
+    "rating": "9.6",
+    "reviewCount": "29",
+    "screenshot": "/tmp/vrbo_batch/screenshots/4682000.png",
+    "proxy_ip": "184.174.46.219",
+    "elapsed_sec": 48.9
+  },
+  {
+    "url": "https://www.vrbo.com/4533366ha?dateless=true",
+    "listing_id": "4533366ha",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "",
+    "h1": "T\u157cE \u15f0\u15e9I\u144e \u14aaO\u15eaGE- Modern comfort by TRAILS & MUSEUM located on quiet street",
+    "rating": null,
+    "reviewCount": "275",
+    "screenshot": "/tmp/vrbo_batch/screenshots/4533366ha.png",
+    "proxy_ip": "45.38.111.79",
+    "elapsed_sec": 15.5
+  },
+  {
+    "url": "https://www.vrbo.com/3316902?dateless=true",
+    "listing_id": "3316902",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "5 minutes to the Momentary & 8th St Market- The Benton #411",
+    "h1": "5 minutes to the Momentary & 8th St Market- The Benton #411",
+    "rating": "9.8",
+    "reviewCount": "100",
+    "screenshot": "/tmp/vrbo_batch/screenshots/3316902.png",
+    "proxy_ip": "147.124.198.24",
+    "elapsed_sec": 15.6
+  },
+  {
+    "url": "https://www.vrbo.com/1809022?dateless=true",
+    "listing_id": "1809022",
+    "success": false,
+    "attempts": 2,
+    "error": "RuntimeError: Browser did not become ready within timeout",
+    "elapsed_sec": 95.9
+  },
+  {
+    "url": "https://www.vrbo.com/5381969?dateless=true",
+    "listing_id": "5381969",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "The Gable House | Historic Downtown Bentonville",
+    "h1": "The Gable House | Historic Downtown Bentonville",
+    "rating": null,
+    "reviewCount": null,
+    "screenshot": "/tmp/vrbo_batch/screenshots/5381969.png",
+    "proxy_ip": "136.0.184.99",
+    "elapsed_sec": 29.3
+  },
+  {
+    "url": "https://www.vrbo.com/5000383?dateless=true",
+    "listing_id": "5000383",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "Lovely 2-bedroom cottage with AC in charming Bentonville",
+    "h1": "Lovely 2-bedroom cottage with AC in charming Bentonville",
+    "rating": "9.8",
+    "reviewCount": "16",
+    "screenshot": "/tmp/vrbo_batch/screenshots/5000383.png",
+    "proxy_ip": "145.223.47.54",
+    "elapsed_sec": 29.6
+  },
+  {
+    "url": "https://www.vrbo.com/3512802?dateless=true",
+    "listing_id": "3512802",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "Best Location @ Downtown Bentonville, 1BD, 1BA",
+    "h1": "Best Location @ Downtown Bentonville, 1BD, 1BA",
+    "rating": null,
+    "reviewCount": null,
+    "screenshot": "/tmp/vrbo_batch/screenshots/3512802.png",
+    "proxy_ip": "172.120.120.102",
+    "elapsed_sec": 43.2
+  },
+  {
+    "url": "https://www.vrbo.com/1833473?dateless=true",
+    "listing_id": "1833473",
+    "success": true,
+    "attempts": 2,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "DOWNTOWN STUDIO C, TOP 10 VACATION RENTAL, Bikers Paradise!",
+    "h1": "DOWNTOWN STUDIO C, TOP 10 VACATION RENTAL, Bikers Paradise!",
+    "rating": null,
+    "reviewCount": null,
+    "screenshot": "/tmp/vrbo_batch/screenshots/1833473.png",
+    "proxy_ip": "208.70.9.70",
+    "elapsed_sec": 79.0
+  },
+  {
+    "url": "https://www.vrbo.com/5020693?dateless=true",
+    "listing_id": "5020693",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "Modern Downtown Bentonville Condo - Walk to It All!",
+    "h1": "Modern Downtown Bentonville Condo - Walk to It All!",
+    "rating": null,
+    "reviewCount": "12",
+    "screenshot": "/tmp/vrbo_batch/screenshots/5020693.png",
+    "proxy_ip": "45.39.2.219",
+    "elapsed_sec": 60.7
+  },
+  {
+    "url": "https://www.vrbo.com/3173476?dateless=true",
+    "listing_id": "3173476",
+    "success": true,
+    "attempts": 1,
+    "detection": {
+      "datadome_captcha": false,
+      "captcha_present": false,
+      "blocked_message": false,
+      "rate_limited": false,
+      "cloudflare": false,
+      "perimeterx": false,
+      "detected": false
+    },
+    "title": "The Benton - Warmly decorated, cozy apartment in downtown Bentonville",
+    "h1": "The Benton - Warmly decorated, cozy apartment in downtown Bentonville",
+    "rating": "9.8",
+    "reviewCount": "81",
+    "screenshot": "/tmp/vrbo_batch/screenshots/3173476.png",
+    "proxy_ip": "82.24.232.106",
+    "elapsed_sec": 63.1
+  }
+]
