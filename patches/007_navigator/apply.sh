@@ -143,8 +143,8 @@ class NavigatorSpoof {
     static const base::NoDestructor<BrandList> brands(ParseBrandList(
         std::getenv("STEALTH_UA_FULL_BRANDS"),
         {{"Not_A Brand", "8.0.0.0"},
-         {"Chromium", "120.0.6099.109"},
-         {"Google Chrome", "120.0.6099.109"}}));
+         {"Chromium", "120.0.6099.224"},
+         {"Google Chrome", "120.0.6099.224"}}));
     return *brands;
   }
 

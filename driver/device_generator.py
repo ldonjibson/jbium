@@ -15,8 +15,8 @@ import hashlib
 import json
 import random
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field
+from typing import Optional
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,54 @@ class DeviceProfile:
     profile_name: str
     template_used: str
 
+    # Full Chrome version the User-Agent string claims (e.g.
+    # "120.0.6099.224"). The UA-CH brand lists are derived from this so
+    # navigator.userAgentData / Sec-CH-UA* can never disagree with the
+    # User-Agent string.
+    chrome_full_version: str = ""
+
+
+# Chrome's UA-CH GREASE algorithm, transcribed from the pinned tree's
+# components/embedder_support/user_agent_utils.cc
+# (GenerateBrandVersionList + GetGreasedUserAgentBrandVersion, "updated
+# algorithm", which is the default). Seeded by the major version, so a
+# given Chrome release always produces the same brand list and order.
+_GREASEY_CHARS = [" ", "(", ":", "-", ".", "/", ")", ";", "=", "?", "_"]
+_GREASED_VERSIONS = ["8", "99", "24"]
+_BRAND_ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]]
+
+
+def ua_brand_lists(full_version: str, brand: str = "Google Chrome"):
+    """
+    Return (brands, full_version_list) exactly as stock Chrome builds
+    them for `full_version`, each a list of (brand, version) tuples.
+
+    For 120.0.6099.224 this yields
+      [("Not_A Brand", "8"), ("Chromium", "120"), ("Google Chrome", "120")]
+    and the same with "8.0.0.0" / "120.0.6099.224" — i.e. the
+    well-known Chrome 120 Sec-CH-UA header.
+    """
+
+    major = int(full_version.split(".")[0])
+    greasey_brand = (
+        f"Not{_GREASEY_CHARS[major % len(_GREASEY_CHARS)]}A"
+        f"{_GREASEY_CHARS[(major + 1) % len(_GREASEY_CHARS)]}Brand"
+    )
+    greasey_major = _GREASED_VERSIONS[major % len(_GREASED_VERSIONS)]
+    order = _BRAND_ORDERS[major % len(_BRAND_ORDERS)]
+
+    def _build(greasey_version: str, version: str):
+        brands = [None, None, None]
+        brands[order[0]] = (greasey_brand, greasey_version)
+        brands[order[1]] = ("Chromium", version)
+        brands[order[2]] = (brand, version)
+        return brands
+
+    return (
+        _build(greasey_major, str(major)),
+        _build(f"{greasey_major}.0.0.0", full_version),
+    )
+
 
 class DeviceGenerator:
     """
@@ -89,14 +137,14 @@ class DeviceGenerator:
         self.templates_path = Path(templates_path)
         self.templates = self._load_templates()
         
-        logger.info(f"DeviceGenerator initialized")
+        logger.info("DeviceGenerator initialized")
         logger.info(f"  Templates: {len(self.templates.get('templates', {}))} profiles")
     
     def _load_templates(self) -> dict:
         """Load device templates"""
         
         if self.templates_path.exists():
-            with open(self.templates_path) as f:
+            with open(self.templates_path, encoding="utf-8") as f:
                 return json.load(f)
         
         # Minimal fallback
@@ -104,7 +152,7 @@ class DeviceGenerator:
         return {
             "templates": {},
             "chrome_versions": [
-                {"major": 120, "minor": 0, "build": 6099, "patch": "109"}
+                {"major": 120, "minor": 0, "build": 6099, "patch": "224"}
             ],
             "user_agent_templates": {
                 "Windows": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{full_version} Safari/537.36",
@@ -199,8 +247,15 @@ class DeviceGenerator:
             # Browser
             user_agent=user_agent,
             ua_platform=template["ua_platform"],
+            # Templates define a single "ua_platform_version" (e.g.
+            # "15.0.0" = Windows 11, "14.1.0" = macOS Sonoma). An
+            # optional "ua_platform_versions" list still takes
+            # precedence for templates that want several. Reading only
+            # the plural key (the old code) silently reported "10.0.0"
+            # for every profile, macOS and Windows 11 included.
             ua_platform_version=random.choice(
-                template.get("ua_platform_versions", ["10.0.0"])
+                template.get("ua_platform_versions")
+                or [template.get("ua_platform_version", "10.0.0")]
             ),
             
             # Seeds
@@ -211,6 +266,7 @@ class DeviceGenerator:
             # Metadata
             profile_name=f"{template_name}_{session_seed}",
             template_used=template_name,
+            chrome_full_version=full_version,
         )
         
         logger.info(f"Generated device: {profile.os} | {profile.cpu_model}")

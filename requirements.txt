@@ -6,7 +6,6 @@
 
 # ── Core driver ──
 aiohttp>=3.9.0          # Async HTTP client (proxy IP detection, API calls)
-websockets>=12.0        # WebSocket (CDP communication)
 pyyaml>=6.0             # YAML config parsing
 
 # ── GeoIP ──

@@ -13,13 +13,20 @@ work jbium exists to do, but it means jbium alone cannot listen to
 network traffic, intercept requests, or inspect GraphQL/XHR/fetch
 calls.
 
-It doesn't need to. jbium launches a real, unmodified-at-the-protocol-
-level Chromium with a normal CDP endpoint
-(--remote-debugging-port=<port>), so any real automation framework can
-attach to it directly with Playwright's own connect_over_cdp() and use
-its mature request/response interception — you get jbium's proxy
-handling, GeoIP-consistent fingerprint generation, and stealth patches
+It doesn't need to. jbium drives the browser over
+--remote-debugging-pipe, which no page can reach; launching with
+expose_cdp_port=True additionally opens a normal TCP CDP endpoint so
+Playwright can attach with connect_over_cdp() and use its mature
+request/response interception — you get jbium's proxy handling,
+GeoIP-consistent fingerprint generation, and stealth patches
 *underneath*, and Playwright's full API *on top*.
+
+Trade-off: that TCP port is reachable from page JavaScript
+(fetch('http://127.0.0.1:<port>/json/version')), so a site that scans
+for it can tell the session is automated. Use this integration where
+that risk is acceptable; stay on jbium's own StealthPage where it
+isn't. Pages Playwright opens also need jbium's Client Hints override
+applied (see below), since only jbium.new_page() does that itself.
 
 Division of responsibility:
   - jbium:       proxy → GeoIP → device fingerprint → launch the
@@ -92,11 +99,13 @@ async def main():
     print(f"Using proxy: {proxy_url}")
 
     async with Jbium() as browser:
-        await browser.launch(proxy_url=proxy_url, headless=False)
+        # expose_cdp_port=True opens the (page-detectable) TCP CDP port
+        # Playwright needs — see the module docstring for the trade-off.
+        await browser.launch(proxy_url=proxy_url, headless=False, expose_cdp_port=True)
 
-        # jbium's own CDP debug port — this is the hand-off point to
-        # Playwright. Anything opened via connect_over_cdp shares the
-        # same browser process, same proxy, same fingerprint patches.
+        # The hand-off point to Playwright. Anything opened via
+        # connect_over_cdp shares the same browser process, same proxy,
+        # same fingerprint patches.
         cdp_url = f"http://127.0.0.1:{browser._debug_port}"
         print(f"Handing off to Playwright at {cdp_url}")
 
@@ -104,6 +113,12 @@ async def main():
             pw_browser = await p.chromium.connect_over_cdp(cdp_url)
             context = pw_browser.contexts[0]
             page = context.pages[0] if context.pages else await context.new_page()
+
+            # Same per-page Client Hints override jbium.new_page() applies,
+            # so this page's Sec-CH-UA* headers and navigator.userAgentData
+            # match the spoofed User-Agent. Must happen before navigating.
+            cdp = await context.new_cdp_session(page)
+            await cdp.send("Emulation.setUserAgentOverride", browser.client_hints_override())
 
             # ── Network / API / GraphQL call listening ──
             # This is the part jbium's own driver cannot do — Playwright's

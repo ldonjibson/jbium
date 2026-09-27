@@ -39,8 +39,9 @@ What is deliberately NOT patched in-source anymore:
   Geoposition::SetCoords()/handleEvent() API that does not exist.
 
 Env vars (set by the jbium driver):
-- STEALTH_GEO_LANGUAGE — e.g. "ja-JP" (navigator.languages +
-  Accept-Language header)
+- STEALTH_GEO_LANGUAGES — plain comma list, e.g. "ja,en-US,en"
+  (navigator.languages + Accept-Language header; q-values are
+  generated here, so the value itself must not contain any)
 - TZ                  — e.g. "Asia/Tokyo" (set by the driver, read
                         by libc/ICU, not by this patch)
 """

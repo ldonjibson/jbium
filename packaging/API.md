@@ -44,21 +44,36 @@ every `STEALTH_*` env var, and spawns the browser process.
 | `geoip_override` | `Optional[Dict]` | `None` | Skip GeoIP resolution entirely and construct a `GeoProfile` from this dict instead. Accepted keys (all optional, each has a sane US default if omitted): `country_code`, `country_name`, `city`, `region`, `latitude`, `longitude`, `timezone`, `language`, `locale`, `currency`, `date_format`, `ip_type`, `asn`, `isp`, `organization`, `common_resolutions`, `common_fonts`, `os_distribution`, `confidence`. |
 | `extensions` | `Optional[List[str]]` | `None` | Paths to unpacked Chrome extension directories to load at startup. Silently ignored (with a logged warning) if `headless=True` — Chrome extension support is unreliable in headless mode. |
 | `fingerprint_overrides` | `Optional[Dict[str, str]]` | `None` | Raw `STEALTH_*` env var overrides applied *after* the generated profile — the escape hatch for forcing one specific property without hand-building a whole device template. Example: `{"STEALTH_GPU_VENDOR": "Custom Vendor Inc."}`. See the full env var list below for every key this can override. |
+| `expose_cdp_port` | `bool` | `False` | The driver always controls the browser over `--remote-debugging-pipe`, which opens no network socket, so no page can find a DevTools endpoint. `True` *additionally* opens a TCP DevTools port (picked by the browser, available as `browser._debug_port`) for external CDP clients such as Playwright's `connect_over_cdp()`. That port **is** reachable from page JavaScript (`fetch('http://127.0.0.1:<port>/json/version')`), so it makes the session detectable — leave it off unless you need it. Pages the external client opens need `browser.client_hints_override()` applied (see below). |
 
 Returns a `StealthSession` (see "Data classes" below).
 
 ### `await jbium.new_page() -> StealthPage`
 
-No arguments. Opens a new tab via CDP `Target.createTarget`, and — if
-a session is active — immediately applies a `Emulation.setGeolocationOverride`
-using the session's GeoIP coordinates with small random per-call
-jitter (±0.05°) so repeat pages aren't pixel-identical.
+No arguments. Opens a new tab via CDP `Target.createTarget`, attaches to
+it as a flattened session on the debugging pipe, and before anything
+loads:
+
+- applies `Emulation.setUserAgentOverride` with full `userAgentMetadata`
+  (see `client_hints_override()`), so the `Sec-CH-UA*` request headers
+  and `navigator.userAgentData` match the spoofed User-Agent. Without
+  it the browser process would still send the real build's hints (e.g.
+  `Sec-CH-UA-Platform: "Linux"`, a Chromium-only brand list);
+- applies `Emulation.setGeolocationOverride` using the session's GeoIP
+  coordinates with small random per-call jitter (±0.05°).
+
+### `jbium.client_hints_override() -> dict`
+
+The `Emulation.setUserAgentOverride` params `new_page()` applies. Only
+needed for pages something else opens (e.g. Playwright attached through
+`expose_cdp_port=True`) — send it once per page before navigating.
 
 ### `await jbium.close()`
 
-No arguments. Closes every open page, the CDP websocket, and
-terminates the browser process (SIGTERM, then SIGKILL after a 5s
-timeout).
+No arguments. Detaches every open page, closes the debugging pipe (the
+browser's signal to shut down cleanly), waits up to 5s, then falls back
+to terminate and finally kill. Removes the temporary profile directory
+and the proxy-auth extension directory.
 
 ### Context manager
 
@@ -78,17 +93,19 @@ Never construct this directly — always via `jbium.new_page()`.
 
 | Method | Arguments | Returns | Notes |
 |---|---|---|---|
-| `goto(url, wait_until="load", timeout=30)` | `url: str`, `wait_until: str`, `timeout: int` | `None` | **Known gap**: `wait_until` and `timeout` are accepted but not actually implemented — every call just does a flat `asyncio.sleep(3)` regardless of what you pass. `"networkidle"` does not wait for actual network idle. |
+| `goto(url, wait_until="load", timeout=30)` | `url: str`, `wait_until: str`, `timeout: int` | `None` | `"load"` / `"domcontentloaded"` wait for the matching CDP lifecycle event; `"networkidle"` waits until no request has been in flight for 500ms. Waits up to `timeout` seconds, then a short settle delay. Raises on a navigation error. |
 | `get_content()` | none | `str` | `document.documentElement.outerHTML`. |
 | `get_title()` | none | `str` | `document.title`. |
 | `evaluate(expression)` | `expression: str` | `Any` | Runs arbitrary JS via `Runtime.evaluate` with `returnByValue=True, awaitPromise=True` — a returned Promise is awaited before the value comes back. |
-| `screenshot(filepath)` | `filepath: str` | `None` | PNG via `Page.captureScreenshot`, written to `filepath`. |
+| `screenshot(filepath, full_page=True)` | `filepath: str`, `full_page: bool` | `None` | PNG via `Page.captureScreenshot`, written to `filepath`; `full_page=True` captures the whole scrollable page. |
 | `click(selector)` | `selector: str` | `None` | Moves the mouse along a curved path to a randomized point inside the element (never dead-center), then dispatches real `Input.dispatchMouseEvent` press/release with a randomized dwell. Logs a warning and returns silently if the selector matches nothing. |
 | `type_text(selector, text)` | `selector: str`, `text: str` | `None` | Clicks the field first (to focus it like a real user), then dispatches per-character trusted `Input.dispatchKeyEvent` with jittered inter-key delay and an 8% chance of a longer "thinking" pause per character. |
 | `move_mouse_to(x, y)` | `x: float`, `y: float` | `None` | Lower-level primitive `click()` builds on — bezier-curved, variable-speed mouse movement via real Input events (`isTrusted=true`, unlike a synthetic JS `MouseEvent`). |
 | `scroll_to_bottom()` | none | `None` | Variable-sized wheel ticks with variable delay and a 10% chance of a longer "reading pause" per tick, instead of uniform scrolling. |
 | `check_detection()` | none | `Dict[str, bool]` | Greps page content for known blocking/CAPTCHA signals (DataDome, generic CAPTCHA text, "access denied", rate-limit text, Cloudflare challenge, PerimeterX). Returns each indicator plus an aggregate `"detected"` key. This is a content-string heuristic, not a CreepJS-style fingerprint score. |
-| `close()` | none | `None` | Closes this page's websocket. |
+| `enable_network_capture()` / `wait_for_graphql_response(operation_name, timeout=30)` / `get_captured_graphql(operation_name)` | — | — | GraphQL response capture keyed by `operationName` (`goto()` enables capture automatically). |
+| `on(method, handler)` | `method: str`, `handler: callable` | `None` | Register a handler for a raw CDP event on this page (e.g. `"Network.responseReceived"`). |
+| `close()` | none | `None` | Detaches the driver from this page's CDP session (the tab stays open until the browser closes). |
 
 ---
 
@@ -249,28 +266,26 @@ repo's `docs/PATCHES.md`.
 | `STEALTH_DEVICE_MEMORY` | `device.ram_gb` | `navigator.deviceMemory` (007) |
 | `STEALTH_PLATFORM` | `device.platform` | `navigator.platform` (007) |
 | `STEALTH_MAX_TOUCH_POINTS` | `10` if touch else `0` | `navigator.maxTouchPoints` (007) |
-| `STEALTH_UA_PLATFORM` | `device.ua_platform` | UA Client Hints (007) |
-| `STEALTH_UA_PLATFORM_VERSION` | `device.ua_platform_version` | UA Client Hints (007) |
-| `STEALTH_GEO_COUNTRY` | `geo.country_code` | — (informational) |
-| `STEALTH_GEO_COUNTRY_NAME` | `geo.country_name` | — (informational) |
-| `STEALTH_GEO_CITY` | `geo.city` | — (informational) |
-| `STEALTH_GEO_TIMEZONE` | `geo.timezone` | — (informational; see `TZ` below for the actual mechanism) |
-| `STEALTH_GEO_LANGUAGE` | `geo.language` | `navigator.language` (008) |
-| `STEALTH_GEO_LANGUAGES` | built from `geo.locale`/`geo.language` | `navigator.languages`, `Accept-Language` header (008) |
-| `STEALTH_GEO_LOCALE` | `geo.locale` | — (informational) |
-| `STEALTH_GEO_LATITUDE` / `STEALTH_GEO_LONGITUDE` | `geo.latitude`/`geo.longitude` | Not read by any patch — the actual geolocation override is sent live via CDP in `new_page()`, not this env var |
-| `STEALTH_GEO_CURRENCY` | `geo.currency` | — (informational) |
+| `STEALTH_UA_PLATFORM` | `device.ua_platform` | `navigator.userAgentData.platform` (007) |
+| `STEALTH_UA_PLATFORM_VERSION` | template's `ua_platform_version` (e.g. `15.0.0` = Windows 11, `14.1.0` = macOS 14) | high-entropy `platformVersion` (007) |
+| `STEALTH_UA_ARCHITECTURE` / `STEALTH_UA_BITNESS` | `device.architecture` / `device.bitness` | high-entropy `architecture` / `bitness` (007) |
+| `STEALTH_UA_MODEL` | `""` (desktop) | high-entropy `model` (007) |
+| `STEALTH_UA_BRANDS` / `STEALTH_UA_FULL_BRANDS` | Chrome's GREASE algorithm over the UA's exact version, e.g. `Not_A Brand=8` / `Chromium=120` / `Google Chrome=120` joined with `\|` | `brands` / `fullVersionList` / `uaFullVersion` (007) |
+| `STEALTH_GEO_LANGUAGES` | Chrome's own default list for the profile's UI locale, e.g. `de-DE,de,en-US,en` or `ja,en-US,en` — plain comma list, no q-values | `navigator.language(s)`, `Accept-Language` (008 adds the q-values) |
 | `TZ` | `geo.timezone` | libc/ICU/V8 read this natively — `Date.getTimezoneOffset()`, `Intl`, date formatting |
+| `LANGUAGE` (Linux only) | the profile's Chrome UI locale | UI locale, which sets `Intl`'s default locale (Windows/macOS get `--lang` instead) |
 | `STEALTH_CANVAS_SEED` | `device.canvas_seed` | Canvas noise (004) |
-| `STEALTH_WEBGL_SEED` | `device.webgl_seed` | Not currently read by any patch (005 uses the GPU string vars below instead) |
-| `STEALTH_AUDIO_SEED` | `device.audio_seed` | **Not consumed by any patch yet** — see `patches/011_audio` in the main repo, deliberately incomplete |
-| `STEALTH_GPU_VENDOR` / `STEALTH_GPU_RENDERER` | `device.gpu_vendor`/`device.gpu_renderer` | WebGL vendor/renderer strings (005) |
-| `STEALTH_GPU_VERSION` / `STEALTH_GPU_GLSL_VERSION` | computed | WebGL `GL_VERSION`/GLSL strings (005) |
-| `STEALTH_FONT_OS` | mapped from `device.os` | Font enumeration defense (006) |
-| `STEALTH_FONT_REGION` | mapped from `geo.country_code` | Font enumeration defense (006) |
-| `STEALTH_FILTER_WEBRTC` | always `"true"` | WebRTC IP leak policy (010, driver-side) |
-| `STEALTH_PROXY_IP` | the resolved proxy exit IP | WebRTC leak filtering reference (010) |
+| `STEALTH_AUDIO_SEED` | `device.audio_seed` | **Not consumed yet** — `patches/011_audio` in the main repo is deliberately unwired |
+| `STEALTH_GPU_VENDOR` / `STEALTH_GPU_RENDERER` | `device.gpu_vendor`/`device.gpu_renderer` — ANGLE strings in the exact form Chrome 120 reports per OS | WebGL unmasked vendor/renderer (005) |
+| `STEALTH_FONT_OS` | mapped from `device.ua_platform` | Font profile for the fontconfig tooling (006) |
+| `STEALTH_FONT_REGION` | mapped from `geo.country_code` | Font profile for the fontconfig tooling (006) |
 | `STEALTH_BATTERY_LEVEL` / `STEALTH_BATTERY_CHARGING` | derived from `canvas_seed` | Battery API (010) |
+
+Deliberately **not** set: `STEALTH_GPU_VERSION` / `STEALTH_GPU_GLSL_VERSION`
+(Chrome's WebGL version strings are fixed constants, identical on every
+machine — overriding them is what creates a tell) and the geo/WebRTC
+variables no patch reads. Any inherited `STEALTH_*`, `TZ` or `LANGUAGE`
+in the caller's own environment is dropped before launch.
 
 ---
 

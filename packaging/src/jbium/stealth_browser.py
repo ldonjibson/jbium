@@ -12,7 +12,7 @@ Controls the stealth Chromium build. Handles:
 
 Usage:
     from jbium import Jbium
-
+    
     async with Jbium(proxy_url="http://user:pass@proxy:80") as browser:
         page = await browser.new_page()
         await page.goto("https://www.vrbo.com")
@@ -26,8 +26,8 @@ import math
 import os
 import random
 import shutil
-import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -39,12 +39,10 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 # Local imports
+from jbium.cdp_pipe import CDPPipeConnection, spawn_with_cdp_pipe
 from jbium.fingerprint_manager import FingerprintManager
 from jbium.geoip_resolver import GeoIPResolver, GeoProfile
-from jbium.device_generator import DeviceGenerator, DeviceProfile
-
-# Third-party (for CDP communication until we build custom driver)
-import websockets
+from jbium.device_generator import DeviceGenerator, DeviceProfile, ua_brand_lists
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +51,74 @@ logger = logging.getLogger(__name__)
 # file rather than the caller's CWD, since a pip-installed package can
 # be imported from any working directory.
 _PACKAGE_DIR = Path(__file__).parent
+
+
+# Chrome 120 desktop UI locales: build/config/locales.gni's
+# all_chrome_locales minus extended_locales and pseudolocales.
+_CHROME_UI_LOCALES = frozenset(
+    "af am ar bg bn ca cs da de el en-GB en-US es es-419 et fa fi fil fr gu "
+    "he hi hr hu id it ja kn ko lt lv ml mr ms nb nl pl pt-BR pt-PT ro ru sk "
+    "sl sr sv sw ta te th tr uk ur vi zh-CN zh-TW".split()
+)
+
+# Default accept-languages Chrome ships per UI locale (IDS_ACCEPT_LANGUAGES
+# in components/strings/components_locale_settings_*.xtb at
+# 120.0.6099.224). UI locales without an entry use the en-US default.
+# This is what a fresh Chrome install in that language reports as
+# navigator.languages (verified against a stock Chrome for de, en-GB,
+# es, ja, ko, zh-CN, ...).
+_CHROME_DEFAULT_ACCEPT_LANGUAGES = {
+    "en-US": "en-US,en",
+    "am": "am,en-GB,en", "ar": "ar,en-US,en", "bg": "bg-BG,bg",
+    "bn": "bn-IN,bn,en-US,en", "ca": "ca-ES,ca", "cs": "cs-CZ,cs",
+    "da": "da-DK,da,en-US,en", "de": "de-DE,de,en-US,en", "el": "el-GR,el",
+    "en-GB": "en-GB,en-US,en", "es": "es-ES,es", "es-419": "es-419,es",
+    "et": "et-EE,et,en-US,en", "fa": "fa,en-US,en", "fi": "fi-FI,fi,en-US,en",
+    "fil": "fil,fil-PH,tl,en-US,en", "fr": "fr-FR,fr,en-US,en",
+    "gu": "gu-IN,gu,hi-IN,hi,en-US,en", "he": "he-IL,he,en-US,en",
+    "hi": "hi-IN,hi,en-US,en", "hr": "hr-HR,hr,en-US,en", "hu": "hu-HU,hu,en-US,en",
+    "id": "id-ID,id,en-US,en", "it": "it-IT,it,en-US,en", "ja": "ja,en-US,en",
+    "kn": "kn-IN,kn,en-US,en", "ko": "ko-KR,ko,en-US,en", "lt": "lt,en-US,en,ru,pl",
+    "lv": "lv-LV,lv,en-US,en", "ml": "ml-IN,ml,en-US,en",
+    "mr": "mr-IN,mr,hi-IN,hi,en-US,en", "nb": "nb-NO,nb,no,nn,en-US,en",
+    "nl": "nl-NL,nl,en-US,en", "pl": "pl-PL,pl,en-US,en", "pt-BR": "pt-BR,pt,en-US,en",
+    "pt-PT": "pt-PT,pt,en-US,en", "ro": "ro-RO,ro,en-US,en", "ru": "ru-RU,ru,en-US,en",
+    "sk": "sk-SK,sk,cs,en-US,en", "sl": "sl-SI,sl,en-GB,en", "sr": "sr-RS,sr,en-US,en",
+    "sv": "sv-SE,sv,en-US,en", "sw": "sw,en-GB,en", "ta": "ta-IN,ta,en-US,en",
+    "te": "te-IN,te,hi-IN,hi,en-US,en", "th": "th-TH,th", "tr": "tr-TR,tr,en-US,en",
+    "uk": "uk-UA,uk,en-US,en", "vi": "vi-VN,vi,fr-FR,fr,en-US,en",
+    "zh-CN": "zh-CN,zh", "zh-TW": "zh-TW,zh,en-US,en",
+}
+
+
+def chrome_ui_locale(locale: str) -> str:
+    """
+    The UI locale Chrome 120 picks for a requested locale — a port of
+    ui/base/l10n/l10n_util.cc CheckAndResolveLocale (desktop), e.g.
+    "ja-JP" -> "ja", "es-MX" -> "es-419", "en-AU" -> "en-GB",
+    "zh-HK" -> "zh-TW"; en-US when nothing matches.
+    """
+
+    locale = locale.replace("_", "-")
+    if locale in _CHROME_UI_LOCALES:
+        return locale
+    lang, _, region = locale.partition("-")
+    lang, region = lang.lower(), region.lower()
+    if region:
+        if lang == "es" and region != "es":
+            candidate = "es-419"
+        elif lang == "pt" and region != "br":
+            candidate = "pt-PT"
+        elif lang == "zh":
+            candidate = "zh-TW" if region in ("hk", "mo") else "zh-CN"
+        elif lang == "en":
+            candidate = "en-US" if region in ("lr", "ph") else "en-GB"
+        else:
+            candidate = lang
+        if candidate in _CHROME_UI_LOCALES:
+            return candidate
+    aliases = {"en": "en-US", "iw": "he", "no": "nb", "pt": "pt-BR", "tl": "fil", "zh": "zh-CN"}
+    return aliases.get(lang, lang if lang in _CHROME_UI_LOCALES else "en-US")
 
 
 @dataclass
@@ -71,6 +137,8 @@ class StealthSession:
     
     # Browser
     browser_process: Optional[subprocess.Popen] = None
+    # Always None: CDP runs over --remote-debugging-pipe, so there is no
+    # DevTools WebSocket URL. Kept so existing callers don't break.
     ws_url: Optional[str] = None
     env_vars: Optional[Dict[str, str]] = None
     
@@ -104,7 +172,7 @@ class Jbium:
         config_path = config_path or str(_PACKAGE_DIR / "config" / "settings.yaml")
         self.config = self._load_config(config_path)
         self.browser_path = browser_path or self._find_browser()
-
+        
         # Managers
         self.geoip_resolver = GeoIPResolver(
             db_path=self.config.get("geoip", {}).get(
@@ -122,11 +190,17 @@ class Jbium:
         # State
         self._session: Optional[StealthSession] = None
         self._browser_process: Optional[subprocess.Popen] = None
-        self._ws_connection = None
-        self._pages: List[Dict] = []
+        self._pages: List["StealthPage"] = []
         self._proxy_auth_extension_dir: Optional[str] = None
+        self._user_data_dir: Optional[str] = None
 
-        logger.info(f"Jbium initialized")
+        # CDP transport: --remote-debugging-pipe (see driver/cdp_pipe.py).
+        # No TCP debugging port exists unless launch(expose_cdp_port=True)
+        # explicitly asks for one, in which case _debug_port holds it.
+        self._conn: Optional[CDPPipeConnection] = None
+        self._debug_port: Optional[int] = None
+
+        logger.info("Jbium initialized")
         logger.info(f"  Browser: {self.browser_path}")
         logger.info(f"  Config: {config_path}")
     
@@ -142,6 +216,7 @@ class Jbium:
         geoip_override: Optional[Dict] = None,
         extensions: Optional[List[str]] = None,
         fingerprint_overrides: Optional[Dict[str, str]] = None,
+        expose_cdp_port: bool = False,
     ) -> StealthSession:
         """
         Launch stealth browser with complete configuration.
@@ -159,6 +234,14 @@ class Jbium:
                 applied after the generated profile — e.g.
                 {"STEALTH_GPU_VENDOR": "Custom Vendor Inc."} to force one
                 property without hand-building a whole device template.
+            expose_cdp_port: The driver itself always talks to the browser
+                over --remote-debugging-pipe, which no web page can reach.
+                Set this only to ALSO open a TCP debugging port for an
+                external CDP client (e.g. Playwright's connect_over_cdp).
+                That port is reachable from page JavaScript
+                (fetch('http://127.0.0.1:<port>/json/version')), so it
+                makes the session detectable as automated — leave it off
+                for anything stealth-sensitive.
 
         Returns:
             StealthSession with all configuration
@@ -230,52 +313,90 @@ class Jbium:
             device_profile=device_profile,
             geo_profile=geo_profile,
             extensions=extensions,
+            expose_cdp_port=expose_cdp_port,
         )
-        
-        # Step 6: Wait for browser to be ready
-        await self._wait_for_browser_ready()
-        
-        # Step 7: Connect via CDP (temporary, until custom driver)
-        self._ws_url = await self._get_ws_url()
-        
+        session.browser_process = self._browser_process
+
+        # Step 6: Wait for the browser to answer on the CDP pipe
+        await self._wait_for_browser_ready(device_profile)
+
+        if expose_cdp_port:
+            self._debug_port = await self._read_devtools_active_port()
+            logger.warning(
+                f"  CDP TCP port {self._debug_port} is open (expose_cdp_port=True) — "
+                "any page can detect it; use only for external CDP tooling"
+            )
+
         logger.info("  ✅ Browser launched")
         logger.info(f"  Session: {session.session_id}")
         
         return session
     
+    def client_hints_override(self) -> Dict[str, Any]:
+        """
+        Params for CDP Emulation.setUserAgentOverride matching this
+        session's profile. new_page() applies them automatically; pages
+        opened by anything else (e.g. Playwright attached through
+        launch(expose_cdp_port=True)) must send them once per page before
+        navigating, or their Sec-CH-UA* headers report the real build.
+        """
+
+        if not self._session:
+            raise RuntimeError("Browser is not running — call launch() first")
+        return self._user_agent_override_params(self._session.device_profile)
+
     async def new_page(self) -> "StealthPage":
         """Create a new page/tab"""
-        
-        if not self._ws_connection:
-            self._ws_connection = await websockets.connect(self._ws_url, max_size=None)
 
-        # Create new target via CDP
-        target_id = await self._cdp_command("Target.createTarget", {
+        if not self._conn:
+            raise RuntimeError("Browser is not running — call launch() first")
+
+        # Create the tab, then attach to it as a flattened session so its
+        # commands and events share the one debugging pipe (tagged with
+        # sessionId) — the pipe equivalent of the old per-page
+        # /devtools/page/<id> WebSocket.
+        target = await self._cdp_command("Target.createTarget", {
             "url": "about:blank"
         })
+        target_id = target["targetId"]
+        attached = await self._cdp_command("Target.attachToTarget", {
+            "targetId": target_id,
+            "flatten": True,
+        })
 
-        # Connect to the page. self._ws_url looks like
-        # "ws://127.0.0.1:PORT/devtools/browser/<id>" — split('/')[0]
-        # only grabs "ws:" (the empty string from "//" lands at index 1,
-        # the real host:port at index 2), producing an invalid URI with
-        # no host. rsplit on "/devtools/" instead keeps "ws://host:port".
-        ws_base = self._ws_url.rsplit("/devtools/", 1)[0]
-        page_ws_url = f"{ws_base}/devtools/page/{target_id['targetId']}"
-        # max_size=None: the `websockets` library defaults to a 1MiB max
-        # frame size, which a real page's full outer HTML (get_content(),
-        # via Runtime.evaluate's response) trivially exceeds -- confirmed
-        # live against vrbo.com. Hitting that default doesn't just fail
-        # the one command, it closes the whole CDP connection outright
-        # (ConnectionClosedError, code 1009), breaking every later
-        # command on this page too.
-        page_ws = await websockets.connect(page_ws_url, max_size=None)
-        
         page = StealthPage(
             browser=self,
-            ws_connection=page_ws,
-            target_id=target_id["targetId"],
+            connection=self._conn,
+            target_id=target_id,
+            session_id=attached["sessionId"],
             session=self._session,
         )
+
+        # User-Agent Client Hints for this page, before anything loads.
+        # With --user-agent set, the browser process still builds the
+        # Sec-CH-UA* request headers from the real build's metadata
+        # (components/embedder_support/user_agent_utils.cc returns the
+        # low-entropy defaults — real OS as Sec-CH-UA-Platform, the
+        # Chromium-only brand list — and empty high-entropy values).
+        # Patch 007 only rewrites the JS-side navigator.userAgentData,
+        # so without this the headers contradict the UA string and JS.
+        # Emulation.setUserAgentOverride with userAgentMetadata replaces
+        # both the headers and navigator.userAgentData for this target
+        # (emulation_handler.cc ApplyUserAgentMetadataOverrides).
+        # A failure here is fatal: a page with mismatched Client Hints
+        # is worse than no page.
+        if self._session:
+            try:
+                await page._command(
+                    "Emulation.setUserAgentOverride", self.client_hints_override()
+                )
+            except Exception:
+                await page.close()
+                try:
+                    await self._cdp_command("Target.closeTarget", {"targetId": target_id})
+                except Exception:
+                    pass
+                raise
 
         # Geolocation override (replaces the old in-source patch):
         # serve the GeoIP profile's coordinates (with per-session
@@ -319,18 +440,29 @@ class Jbium:
                 await page.close()
             except Exception as e:
                 logger.warning(f"Error closing page: {e}")
-        
-        # Close WebSocket
-        if self._ws_connection:
-            await self._ws_connection.close()
-        
-        # Kill browser process
-        if self._browser_process:
-            self._browser_process.terminate()
-            try:
-                self._browser_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._browser_process.kill()
+        self._pages = []
+
+        # Closing our end of the debugging pipe is the browser's signal
+        # to shut down cleanly (devtools_pipe_handler.cc treats EOF on its
+        # command pipe as the client disconnecting). Give it a few
+        # seconds, then fall back to terminate/kill.
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
+        process = self._browser_process
+        if process:
+            loop = asyncio.get_running_loop()
+            for stop in (None, process.terminate, process.kill):
+                if stop:
+                    stop()
+                try:
+                    await loop.run_in_executor(None, process.wait, 5)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+            self._browser_process = None
+        self._debug_port = None
 
         # Remove the temporary proxy-auth extension directory, if one was
         # generated for this session (contains the proxy password on disk).
@@ -338,12 +470,18 @@ class Jbium:
             shutil.rmtree(self._proxy_auth_extension_dir, ignore_errors=True)
             self._proxy_auth_extension_dir = None
 
-        logger.info("  ✅ Browser shut down")
+        # Remove the throwaway profile (cookies, cache, local storage) —
+        # it is uniquely named per launch and never reused.
+        if self._user_data_dir:
+            shutil.rmtree(self._user_data_dir, ignore_errors=True)
+            self._user_data_dir = None
 
+        logger.info("  ✅ Browser shut down")
+    
     # ─────────────────────────────────────────────
     # Context manager support
     # ─────────────────────────────────────────────
-
+    
     async def __aenter__(self):
         return self
     
@@ -361,11 +499,11 @@ class Jbium:
         
         config_file = Path(config_path)
         if config_file.exists():
-            with open(config_file) as f:
+            with open(config_file, encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
         
         # Defaults — binary_path empty means "auto-detect" via
-        # driver.platform_detect.find_browser_binary() (see _find_browser).
+        # jbium.platform_detect.find_browser_binary() (see _find_browser).
         return {
             "browser": {
                 "binary_path": "",
@@ -466,21 +604,15 @@ class Jbium:
         proxy_url: str,
     ) -> Dict[str, str]:
         """
-        Generate all environment variables that the stealth
-        Chromium build reads via getenv().
-        
-        These control all the patches we applied:
-        - STEALTH_CPU_CORES → navigator.hardwareConcurrency
-        - STEALTH_DEVICE_MEMORY → navigator.deviceMemory  
-        - STEALTH_PLATFORM → navigator.platform
-        - STEALTH_GEO_TIMEZONE → Date API timezone
-        - STEALTH_GEO_LANGUAGE → navigator.language
-        - etc.
+        Generate the environment variables the stealth Chromium build
+        reads via getenv(). Only variables some patch actually reads are
+        set (verified against patches/*/apply.sh) — see
+        packaging/API.md for the full table.
         """
-        
+
         env_vars = {}
-        
-        # ── Navigator spoofing (Patch 007) ──
+
+        # ── Navigator + UA Client Hints (Patch 007) ──
         env_vars["STEALTH_CPU_CORES"] = str(device.cpu_cores)
         env_vars["STEALTH_DEVICE_MEMORY"] = str(device.ram_gb)
         env_vars["STEALTH_PLATFORM"] = device.platform
@@ -489,55 +621,63 @@ class Jbium:
         )
         env_vars["STEALTH_UA_PLATFORM"] = device.ua_platform
         env_vars["STEALTH_UA_PLATFORM_VERSION"] = device.ua_platform_version
-        
-        # ── GeoIP consistency (Patch 008) ──
-        env_vars["STEALTH_GEO_COUNTRY"] = geo.country_code
-        env_vars["STEALTH_GEO_COUNTRY_NAME"] = geo.country_name
-        env_vars["STEALTH_GEO_CITY"] = geo.city
-        env_vars["STEALTH_GEO_TIMEZONE"] = geo.timezone
-        env_vars["STEALTH_GEO_LANGUAGE"] = geo.language
-        env_vars["STEALTH_GEO_LANGUAGES"] = f"{geo.locale},{geo.language};q=0.8,en;q=0.5"
-        env_vars["STEALTH_GEO_LOCALE"] = geo.locale
-        env_vars["STEALTH_GEO_LATITUDE"] = str(geo.latitude)
-        env_vars["STEALTH_GEO_LONGITUDE"] = str(geo.longitude)
-        env_vars["STEALTH_GEO_CURRENCY"] = geo.currency
-        
+        # Without these the patch serves the build machine's real values
+        # (e.g. "x86" for an Apple Silicon profile).
+        env_vars["STEALTH_UA_ARCHITECTURE"] = device.architecture
+        env_vars["STEALTH_UA_BITNESS"] = device.bitness
+        env_vars["STEALTH_UA_MODEL"] = ""  # desktop devices report no model
+        # Brand lists derived from the exact version the User-Agent
+        # string claims. Binaries built before the patch-007 fix carry a
+        # hard-coded 120.0.6099.109 fallback that would contradict a .224
+        # UA; setting these always wins over the fallback.
+        brands, full_brands = ua_brand_lists(self._chrome_full_version(device))
+        env_vars["STEALTH_UA_BRANDS"] = "|".join(f"{b}={v}" for b, v in brands)
+        env_vars["STEALTH_UA_FULL_BRANDS"] = "|".join(f"{b}={v}" for b, v in full_brands)
+
+        # ── Languages (Patch 008) ──
+        # A plain comma-separated list: patch 008 splits it on commas for
+        # navigator.languages (Blink's ParseAndSanitize does not strip
+        # ";q=" parameters) and appends its own descending q-values for
+        # the Accept-Language header.
+        env_vars["STEALTH_GEO_LANGUAGES"] = ",".join(self._accept_languages(geo))
+
         # Timezone: TZ is honored by libc/ICU/V8 Date directly, keeping
         # getTimezoneOffset(), Intl, and date formatting consistent with
         # the proxy IP's location (replaces the old v8 source patch).
         env_vars["TZ"] = geo.timezone
-        
-        # ── Canvas/WebGL noise (Patch 004/005) ──
+
+        # ── Noise seeds ──
+        # Canvas noise (Patch 004). The audio seed is read by Patch 011's
+        # helper, which is deliberately not wired in yet (see its
+        # docstring). No patch reads a WebGL seed — 005 only swaps the
+        # GPU strings below — so none is set.
         env_vars["STEALTH_CANVAS_SEED"] = str(device.canvas_seed)
-        env_vars["STEALTH_WEBGL_SEED"] = str(device.webgl_seed)
         env_vars["STEALTH_AUDIO_SEED"] = str(device.audio_seed)
-        
+
         # ── GPU strings (Patch 005) ──
-        # The WebGL patch reads these directly and passes the real
-        # driver value through when unset.
+        # Unmasked vendor/renderer, in the exact form Chrome 120 reports
+        # them for the profile's OS (see config/fingerprints.json).
+        # STEALTH_GPU_VERSION / STEALTH_GPU_GLSL_VERSION are deliberately
+        # NOT set: Chrome's WebGL VERSION / SHADING_LANGUAGE_VERSION inner
+        # strings are fixed constants ("OpenGL ES 2.0 Chromium" /
+        # "OpenGL ES GLSL ES 1.0 Chromium", 3.0 for WebGL2 —
+        # gpu/command_buffer/service/gl_utils.cc), the same on every
+        # machine, so the real values are already the right ones.
         env_vars["STEALTH_GPU_VENDOR"] = device.gpu_vendor
         env_vars["STEALTH_GPU_RENDERER"] = device.gpu_renderer
-        # Plausible ANGLE-style version strings consistent with the
-        # spoofed GPU; masked GL_VERSION/GLSL embed these.
-        env_vars["STEALTH_GPU_VERSION"] = (
-            "OpenGL ES 3.2 Chromium"
-            if "ANGLE" not in device.gpu_renderer
-            else f"OpenGL ES 3.2 ({device.gpu_renderer})"
-        )
-        env_vars["STEALTH_GPU_GLSL_VERSION"] = "OpenGL ES GLSL ES 3.20"
-        
-        # ── Font filtering (Patch 006) ──
-        # Map OS to font filter
+
+        # ── Font profile (consumed by the fontconfig tooling, Patch 006) ──
+        # Keyed on ua_platform ("Windows"/"macOS"/"Linux"): the Linux
+        # templates' os field is "Ubuntu 22.04", so matching on device.os
+        # left Linux profiles without a font profile at all.
         os_font_map = {
             "Windows": "WINDOWS_11",
             "macOS": "MACOS_SONOMA",
             "Linux": "UBUNTU",
         }
-        for os_name, font_os in os_font_map.items():
-            if os_name in device.os:
-                env_vars["STEALTH_FONT_OS"] = font_os
-                break
-        
+        if device.ua_platform in os_font_map:
+            env_vars["STEALTH_FONT_OS"] = os_font_map[device.ua_platform]
+
         # Map region to font region
         region_font_map = {
             "JP": "JAPAN",
@@ -550,17 +690,79 @@ class Jbium:
         else:
             env_vars["STEALTH_FONT_REGION"] = "GENERIC"
         
-        # ── WebRTC (Patch 010) ──
-        env_vars["STEALTH_FILTER_WEBRTC"] = "true"
-        env_vars["STEALTH_PROXY_IP"] = self._session.proxy_ip if self._session else ""
-        
+        # ── WebRTC ──
+        # Nothing to set here: no patch reads an env var for WebRTC.
+        # ICE-candidate filtering is the --webrtc-ip-handling-policy
+        # switch added in _spawn_browser.
+
         # ── Battery API (Patch 010) ──
         # Session-stable, plausible values; unset = real readings pass through.
         env_vars["STEALTH_BATTERY_LEVEL"] = f"{0.55 + (device.canvas_seed % 40) / 100.0:.2f}"
         env_vars["STEALTH_BATTERY_CHARGING"] = "false" if device.canvas_seed % 2 else "true"
-        
+
         return env_vars
-    
+
+    def _chrome_full_version(self, device: DeviceProfile) -> str:
+        """The full Chrome version the profile's User-Agent string claims."""
+
+        if device.chrome_full_version:
+            return device.chrome_full_version
+        # Profiles built without chrome_full_version (e.g. by hand):
+        # recover it from the UA string itself.
+        marker = "Chrome/"
+        idx = device.user_agent.find(marker)
+        if idx == -1:
+            raise ValueError(f"Cannot determine Chrome version from UA: {device.user_agent!r}")
+        return device.user_agent[idx + len(marker):].split(" ", 1)[0]
+
+    @staticmethod
+    def _ui_locale(geo: GeoProfile) -> str:
+        """Chrome UI locale for the profile's primary language (e.g. "ja-JP" -> "ja")."""
+
+        return chrome_ui_locale(geo.locale or geo.language or "en-US")
+
+    @staticmethod
+    def _accept_languages(geo: GeoProfile) -> List[str]:
+        """
+        The profile's language list, most preferred first: exactly what a
+        fresh Chrome install in that UI language reports (e.g.
+        de-DE,de,en-US,en; en-GB,en-US,en; ja,en-US,en; en-US,en), so
+        navigator.languages, Accept-Language and the UI locale that
+        drives Intl all agree the way they do on a real install.
+        """
+
+        default = _CHROME_DEFAULT_ACCEPT_LANGUAGES.get(
+            Jbium._ui_locale(geo), _CHROME_DEFAULT_ACCEPT_LANGUAGES["en-US"]
+        )
+        return default.split(",")
+
+    def _user_agent_override_params(self, device: DeviceProfile) -> Dict[str, Any]:
+        """
+        Emulation.setUserAgentOverride params that make the Sec-CH-UA*
+        request headers and navigator.userAgentData match the profile
+        (the same values patch 007 serves from the env vars above).
+        acceptLanguage is omitted on purpose: patch 008 already makes the
+        Accept-Language header match navigator.languages.
+        """
+
+        brands, full_brands = ua_brand_lists(self._chrome_full_version(device))
+        return {
+            "userAgent": device.user_agent,
+            "platform": device.platform,
+            "userAgentMetadata": {
+                "brands": [{"brand": b, "version": v} for b, v in brands],
+                "fullVersionList": [{"brand": b, "version": v} for b, v in full_brands],
+                "fullVersion": self._chrome_full_version(device),
+                "platform": device.ua_platform,
+                "platformVersion": device.ua_platform_version,
+                "architecture": device.architecture,
+                "model": "",
+                "mobile": False,
+                "bitness": device.bitness,
+                "wow64": False,
+            },
+        }
+
     async def _spawn_browser(
         self,
         proxy_url: str,
@@ -569,6 +771,7 @@ class Jbium:
         device_profile: DeviceProfile,
         geo_profile: GeoProfile,
         extensions: Optional[List[str]] = None,
+        expose_cdp_port: bool = False,
     ) -> subprocess.Popen:
         """Launch the stealth Chromium process"""
 
@@ -701,30 +904,65 @@ class Jbium:
             Path(tempfile.gettempdir()) / f"stealth-profile-{uuid.uuid4().hex}"
         )
         args.append(f"--user-data-dir={user_data_dir}")
-        
-        # Remote debugging (for CDP connection — temporary)
-        debug_port = random.randint(9222, 9999)
-        args.append(f"--remote-debugging-port={debug_port}")
-        
+        self._user_data_dir = user_data_dir
+
+        # CDP transport: a pipe on fds 3/4 instead of a TCP port, so there
+        # is no local HTTP/WebSocket endpoint a page could probe (see
+        # driver/cdp_pipe.py).
+        args.append("--remote-debugging-pipe")
+        if expose_cdp_port:
+            # Explicit opt-in only (launch() docstring). Port 0 lets the
+            # browser pick a free port and record it in
+            # <user-data-dir>/DevToolsActivePort.
+            args.append("--remote-debugging-port=0")
+
+        # UI locale = the profile's primary language. It decides the
+        # renderer's ICU default locale, i.e. what
+        # Intl.DateTimeFormat().resolvedOptions().locale and
+        # toLocaleString() use; leaving it at the host's locale while
+        # navigator.language says e.g. "de-DE" is a direct mismatch.
+        # Windows/macOS take --lang; on Linux the browser ignores --lang
+        # and reads LANGUAGE/LC_*/LANG through glib instead
+        # (ui/base/l10n/l10n_util.cc, GetApplicationLocaleInternalNonMac).
+        ui_locale = self._ui_locale(geo_profile)
+        args.append(f"--lang={ui_locale}")
+        self._warn_if_locale_missing(ui_locale)
+
         # Anti-detection args
-        extra_args = self.config.get("browser", {}).get("extra_args", [])
+        extra_args = list(self.config.get("browser", {}).get("extra_args", []))
+        port_args = [a for a in extra_args if a.startswith("--remote-debugging-")]
+        if port_args:
+            logger.warning(
+                f"  Ignoring {port_args} from config extra_args — the driver uses "
+                "--remote-debugging-pipe; pass expose_cdp_port=True to launch() "
+                "if an external CDP port is really needed"
+            )
+            extra_args = [a for a in extra_args if a not in port_args]
         args.extend(extra_args)
-        
-        # Environment
-        env = os.environ.copy()
+
+        # Environment: start from the caller's environment minus anything
+        # that would override or contradict this session's profile —
+        # stale STEALTH_* values (including the proxy credentials, which
+        # the browser has no use for) and locale/timezone variables —
+        # then apply this session's values.
+        env = {
+            k: v for k, v in os.environ.items()
+            if not k.upper().startswith("STEALTH_") and k.upper() not in ("TZ", "LANGUAGE")
+        }
         env.update(env_vars)
-        
+        if sys.platform.startswith("linux"):
+            # glib format: underscore separator, colon-separated fallbacks.
+            # glib's format uses "_" ("en_GB", "es_419"); Chrome maps it
+            # back to the same UI locale.
+            env["LANGUAGE"] = ui_locale.replace("-", "_")
+
         logger.info(f"  Launching: {' '.join(args[:5])}...")
         logger.debug(f"  Full command: {' '.join(args)}")
         logger.debug(f"  ENV vars: {env_vars}")
-        
-        # Spawn
-        process = subprocess.Popen(
-            args,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+
+        # Spawn with the CDP pipe on the child's fds 3/4
+        process, pipe_read_fd, pipe_write_fd = spawn_with_cdp_pipe(args, env)
+        self._conn = CDPPipeConnection(pipe_read_fd, pipe_write_fd)
 
         # Drain stdout/stderr continuously on background threads instead
         # of leaving them as unread pipes -- an unread PIPE fills its OS
@@ -746,10 +984,24 @@ class Jbium:
         threading.Thread(target=_drain, args=(process.stdout,), daemon=True).start()
         threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
 
-        # Store debug port
-        self._debug_port = debug_port
-
         return process
+
+    def _warn_if_locale_missing(self, ui_locale: str):
+        """
+        Warn when the binary ships no .pak for the UI locale. The browser
+        then falls back to en-US, so Intl's default locale would disagree
+        with navigator.languages. (scripts/package.sh copies a fixed
+        subset of locales/*.pak.)
+        """
+
+        locales_dir = Path(self.browser_path).parent / "locales"
+        if not locales_dir.is_dir():
+            return  # macOS bundles keep them in *.lproj; nothing to check
+        if not (locales_dir / f"{ui_locale}.pak").exists():
+            logger.warning(
+                f"  No locales/{ui_locale}.pak next to the browser — it will fall "
+                f"back to en-US and Intl's locale will not match navigator.languages"
+            )
 
     def _build_proxy_auth_extension(self, username: str, password: str) -> str:
         """
@@ -813,68 +1065,60 @@ chrome.webRequest.onAuthRequired.addListener(
 
         return str(ext_dir)
 
-    async def _wait_for_browser_ready(self, timeout: int = 30):
-        """Wait for browser to respond to CDP"""
-        
-        import aiohttp
-        
-        start = time.time()
-        
-        while time.time() - start < timeout:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        f"http://127.0.0.1:{self._debug_port}/json/version",
-                        timeout=aiohttp.ClientTimeout(total=2)
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            logger.info(f"  Browser version: {data.get('Browser', 'unknown')}")
-                            return
-            except Exception:
-                await asyncio.sleep(0.5)
-        
-        exit_code = self._browser_process.poll() if self._browser_process else None
-        tail = "\n".join(self._browser_stderr_tail) if getattr(self, "_browser_stderr_tail", None) else "(no output captured)"
-        raise RuntimeError(
-            f"Browser did not become ready within timeout "
-            f"(process exit code: {exit_code!r} -- None means still running)\n"
-            f"Last output:\n{tail}"
-        )
-    
-    async def _get_ws_url(self) -> str:
-        """Get WebSocket URL for CDP"""
-        
-        import aiohttp
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"http://127.0.0.1:{self._debug_port}/json/version"
-            ) as response:
-                data = await response.json()
-                return data["webSocketDebuggerUrl"]
-    
-    async def _cdp_command(self, method: str, params: dict = None) -> dict:
-        """Send CDP command"""
+    async def _wait_for_browser_ready(self, device_profile: DeviceProfile, timeout: int = 30):
+        """Wait for the browser to answer on the CDP pipe, and check its version."""
 
-        if not self._ws_connection:
-            self._ws_connection = await websockets.connect(self._ws_url, max_size=None)
-        
-        message_id = random.randint(1, 999999)
-        message = {
-            "id": message_id,
-            "method": method,
-        }
-        if params:
-            message["params"] = params
-        
-        await self._ws_connection.send(json.dumps(message))
-        
-        while True:
-            response = await self._ws_connection.recv()
-            data = json.loads(response)
-            if data.get("id") == message_id:
-                return data.get("result", {})
+        try:
+            info = await self._conn.send("Browser.getVersion", timeout=timeout)
+        except Exception as e:
+            exit_code = self._browser_process.poll() if self._browser_process else None
+            tail = "\n".join(self._browser_stderr_tail) if getattr(self, "_browser_stderr_tail", None) else "(no output captured)"
+            raise RuntimeError(
+                f"Browser did not become ready within timeout ({e}) "
+                f"(process exit code: {exit_code!r} -- None means still running)\n"
+                f"Last output:\n{tail}"
+            ) from None
+
+        product = info.get("product", "unknown")
+        logger.info(f"  Browser version: {product}")
+
+        # The UA string and Client Hints claim a specific version; if the
+        # binary is a different build, JS feature detection and other
+        # version-gated behavior will contradict that claim.
+        claimed = self._chrome_full_version(device_profile)
+        actual = product.split("/", 1)[-1]
+        if actual != claimed:
+            logger.warning(
+                f"  Browser binary reports {product!r} but the profile claims Chrome "
+                f"{claimed} — version-gated JS features will not match the "
+                f"User-Agent / Client Hints (see config/fingerprints.json chrome_versions)"
+            )
+
+    async def _read_devtools_active_port(self, timeout: float = 10) -> int:
+        """
+        Port chosen by --remote-debugging-port=0, read from
+        <user-data-dir>/DevToolsActivePort (first line). Only used when
+        launch(expose_cdp_port=True).
+        """
+
+        port_file = Path(self._user_data_dir) / "DevToolsActivePort"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                first_line = port_file.read_text().splitlines()[0].strip()
+                if first_line.isdigit():
+                    return int(first_line)
+            except (OSError, IndexError):
+                pass
+            await asyncio.sleep(0.1)
+        raise RuntimeError(f"expose_cdp_port=True but {port_file} never appeared")
+
+    async def _cdp_command(self, method: str, params: dict = None) -> dict:
+        """Send a browser-level CDP command over the debugging pipe."""
+
+        if not self._conn:
+            raise RuntimeError("Browser is not running — call launch() first")
+        return await self._conn.send(method, params, timeout=30, label="browser-level")
 
 
 # Keys physically adjacent to each letter on a QWERTY layout — the
@@ -899,15 +1143,37 @@ class StealthPage:
     def __init__(
         self,
         browser: Jbium,
-        ws_connection,
+        connection: CDPPipeConnection,
         target_id: str,
+        session_id: str,
         session: StealthSession,
     ):
         self.browser = browser
-        self.ws = ws_connection
         self.target_id = target_id
+        self.session_id = session_id
         self.session = session
-        self._message_id = 0
+        self._conn = connection
+        self._closed = False
+
+        # Unsolicited CDP events for this page (no "id", e.g.
+        # Network.responseReceived) arrive on the shared debugging pipe
+        # tagged with this page's sessionId; the connection routes them
+        # to _dispatch_event, which fans them out to registered handlers.
+        self._event_handlers: Dict[str, List] = {}
+        connection.register_session(session_id, self._dispatch_event)
+
+        # Network capture state, populated once enable_network_capture()
+        # registers handlers: requestId -> in-flight request metadata,
+        # resolved GraphQL bodies keyed by operationName, and any
+        # wait_for_graphql_response() callers already waiting on one.
+        self._network_enabled = False
+        self._request_meta: Dict[str, Dict] = {}
+        self._graphql_responses: Dict[str, Dict] = {}
+        self._graphql_waiters: Dict[str, asyncio.Future] = {}
+
+        # General in-flight request tracking (independent of GraphQL
+        # tagging above) -- backs goto(wait_until="networkidle").
+        self._inflight_requests: set = set()
 
         # Tracked cursor position, so mouse moves start from where the
         # "hand" actually is instead of teleporting in from nowhere.
@@ -916,51 +1182,270 @@ class StealthPage:
 
         logger.info(f"New page created: {target_id}")
     
+    def _dispatch_event(self, method: str, params: Dict):
+        """Fan one CDP event out to the handlers registered for it."""
+
+        if method == "Target.detachedFromTarget":
+            self._closed = True
+            return
+        for handler in list(self._event_handlers.get(method, ())):
+            try:
+                handler(params)
+            except Exception:
+                logger.exception(f"Error in handler for {method}")
+
+    def on(self, method: str, handler):
+        """Register a callback for a raw CDP event method (e.g. 'Network.responseReceived')."""
+
+        self._event_handlers.setdefault(method, []).append(handler)
+
     async def _command(self, method: str, params: dict = None) -> dict:
-        """Send CDP command to this page"""
-        
-        self._message_id += 1
-        message = {
-            "id": self._message_id,
-            "method": method,
+        """Send a CDP command to this page's session over the debugging pipe."""
+
+        return await self._conn.send(
+            method, params, session_id=self.session_id,
+            timeout=30, label=f"page {self.target_id}",
+        )
+
+    # ─────────────────────────────────────────────
+    # Network capture
+    # ─────────────────────────────────────────────
+
+    async def enable_network_capture(self):
+        """
+        Turn on Network domain events and start tracking GraphQL
+        request/response pairs by operationName, so callers can await
+        wait_for_graphql_response("SomeQuery") instead of relying on
+        DOM state for data that only ever exists in a GraphQL payload
+        (e.g. VRBO's 30-day pricing calendar). Idempotent.
+        """
+
+        if self._network_enabled:
+            return
+
+        self.on("Network.requestWillBeSent", self._on_request_will_be_sent)
+        self.on("Network.responseReceived", self._on_response_received)
+        self.on("Network.loadingFinished", self._on_loading_finished)
+        self.on("Network.loadingFailed", self._on_loading_failed)
+
+        # Separate, unconditional in-flight tracking (on() supports
+        # multiple handlers per event) -- feeds _wait_for_network_idle,
+        # independent of whether a given request ever gets tagged with a
+        # GraphQL operationName.
+        self.on("Network.requestWillBeSent", self._track_request_started)
+        self.on("Network.loadingFinished", self._track_request_finished)
+        self.on("Network.loadingFailed", self._track_request_finished)
+
+        await self._command("Network.enable")
+        self._network_enabled = True
+
+    def _extract_operation_name(self, post_data: Optional[str]) -> Optional[str]:
+        if not post_data:
+            return None
+        try:
+            body = json.loads(post_data)
+        except (ValueError, TypeError):
+            return None
+        if isinstance(body, list):
+            # Batched GraphQL requests — only the first operation is
+            # tracked, matching the single-query POSTs the ported
+            # detail/pricing extraction actually sends.
+            body = body[0] if body else {}
+        return body.get("operationName") if isinstance(body, dict) else None
+
+    def _on_request_will_be_sent(self, params: Dict):
+        request = params.get("request", {})
+        request_id = params["requestId"]
+        post_data = request.get("postData")
+        if post_data:
+            self._tag_operation(request_id, post_data, request.get("url"))
+        elif request.get("hasPostData"):
+            # CDP omits postData inline above its own size threshold,
+            # flagging hasPostData instead -- GraphQL variables (date
+            # ranges, filters) can push a request over that, so without
+            # this fallback a large-enough query would silently never
+            # get matched to its response.
+            asyncio.create_task(
+                self._fetch_and_tag_operation(request_id, request.get("url"))
+            )
+
+    def _tag_operation(self, request_id: str, post_data: str, url: Optional[str]):
+        operation_name = self._extract_operation_name(post_data)
+        if operation_name:
+            self._request_meta[request_id] = {
+                "operation_name": operation_name,
+                "url": url,
+            }
+
+    async def _fetch_and_tag_operation(self, request_id: str, url: Optional[str]):
+        try:
+            result = await self._command("Network.getRequestPostData", {"requestId": request_id})
+        except Exception as e:
+            logger.debug(f"Failed to fetch large postData for {request_id}: {e}")
+            return
+        self._tag_operation(request_id, result.get("postData", ""), url)
+
+    def _track_request_started(self, params: Dict):
+        self._inflight_requests.add(params["requestId"])
+
+    def _track_request_finished(self, params: Dict):
+        self._inflight_requests.discard(params["requestId"])
+
+    async def _wait_for_network_idle(self, timeout: float, idle_for: float = 0.5):
+        """
+        Wait until no requests have been in flight for `idle_for` seconds
+        (Playwright's own networkidle definition), or until `timeout`
+        total seconds have elapsed.
+        """
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if not self._inflight_requests:
+                await asyncio.sleep(idle_for)
+                if not self._inflight_requests:
+                    return
+                continue
+            await asyncio.sleep(0.1)
+        logger.warning("  goto: networkidle wait timed out with requests still in flight")
+
+    def _on_response_received(self, params: Dict):
+        meta = self._request_meta.get(params["requestId"])
+        if meta:
+            meta["status"] = params.get("response", {}).get("status")
+
+    def _on_loading_finished(self, params: Dict):
+        meta = self._request_meta.pop(params["requestId"], None)
+        if meta:
+            asyncio.create_task(self._resolve_graphql_response(params["requestId"], meta))
+
+    def _on_loading_failed(self, params: Dict):
+        meta = self._request_meta.pop(params["requestId"], None)
+        if meta:
+            waiter = self._graphql_waiters.pop(meta["operation_name"], None)
+            if waiter and not waiter.done():
+                waiter.set_exception(RuntimeError(
+                    f"Network request for {meta['operation_name']} failed: "
+                    f"{params.get('errorText')}"
+                ))
+
+    async def _resolve_graphql_response(self, request_id: str, meta: Dict):
+        try:
+            result = await self._command("Network.getResponseBody", {"requestId": request_id})
+        except Exception as e:
+            logger.warning(f"Failed to fetch response body for {meta['operation_name']}: {e}")
+            return
+
+        body_text = result.get("body", "")
+        if result.get("base64Encoded"):
+            import base64
+            body_text = base64.b64decode(body_text).decode("utf-8", errors="replace")
+
+        try:
+            body = json.loads(body_text)
+        except ValueError:
+            body = body_text
+
+        record = {
+            "operation_name": meta["operation_name"],
+            "url": meta.get("url"),
+            "status": meta.get("status"),
+            "body": body,
         }
-        if params:
-            message["params"] = params
-        
-        await self.ws.send(json.dumps(message))
-        
-        while True:
-            response = await asyncio.wait_for(self.ws.recv(), timeout=30)
-            data = json.loads(response)
-            if data.get("id") == self._message_id:
-                if "error" in data:
-                    raise RuntimeError(f"CDP error: {data['error']}")
-                return data.get("result", {})
-    
+        self._graphql_responses[meta["operation_name"]] = record
+
+        waiter = self._graphql_waiters.pop(meta["operation_name"], None)
+        if waiter and not waiter.done():
+            waiter.set_result(record)
+
+    async def wait_for_graphql_response(self, operation_name: str, timeout: float = 30) -> Dict:
+        """
+        Wait for a GraphQL response matching `operation_name` (matched
+        against the request body's own `operationName` field — the CDP
+        equivalent of Playwright's page.on('response', ...) + JSON body
+        inspection). Returns immediately if the response already
+        arrived. Requires enable_network_capture() to have been called
+        first (goto() does this automatically).
+        """
+
+        if operation_name in self._graphql_responses:
+            return self._graphql_responses[operation_name]
+
+        waiter = self._graphql_waiters.setdefault(
+            operation_name, asyncio.get_running_loop().create_future()
+        )
+        return await asyncio.wait_for(waiter, timeout=timeout)
+
+    def get_captured_graphql(self, operation_name: str) -> Optional[Dict]:
+        """
+        Non-blocking lookup of a GraphQL response that may already have
+        arrived passively (e.g. off the initial page load), without
+        opening a new wait. Returns None if it hasn't shown up (yet).
+        """
+        return self._graphql_responses.get(operation_name)
+
     async def goto(self, url: str, wait_until: str = "load", timeout: int = 30):
-        """Navigate to URL"""
-        
+        """
+        Navigate to URL and wait for `wait_until`:
+          - "load" / "domcontentloaded": waits for the matching CDP Page
+            lifecycle event (Page.loadEventFired / Page.domContentEventFired)
+            via the reader loop's event dispatch.
+          - "networkidle": waits until no requests have been in flight
+            for 500ms (Playwright's own definition), up to `timeout`.
+
+        A short settle delay always follows the wait, since the lifecycle
+        event fires before client-side rendering has necessarily finished
+        painting, and callers are typically about to read the DOM.
+        """
+
         logger.info(f"  goto: {url}")
-        
+
         wait_for_map = {
-            "load": "loadEventFired",
-            "domcontentloaded": "domContentEventFired",
-            "networkidle": "networkIdle",  # Requires Network.enable
+            "load": "Page.loadEventFired",
+            "domcontentloaded": "Page.domContentEventFired",
         }
-        
+
         await self._command("Page.enable")
-        
+        await self.enable_network_capture()
+
+        load_fut = None
+        method = wait_for_map.get(wait_until)
+        if method:
+            # Registered synchronously, before Page.navigate is even
+            # sent, so there's no window where the real event could fire
+            # before anything is listening for it.
+            load_fut = asyncio.get_running_loop().create_future()
+
+            def _on_load_event(params, fut=load_fut):
+                if not fut.done():
+                    fut.set_result(params)
+
+            self.on(method, _on_load_event)
+
         result = await self._command("Page.navigate", {
             "url": url
         })
-        
+
         if "errorText" in result:
+            if method:
+                handlers = self._event_handlers.get(method)
+                if handlers and _on_load_event in handlers:
+                    handlers.remove(_on_load_event)
             raise RuntimeError(f"Navigation failed: {result['errorText']}")
-        
-        # Wait for load
-        await asyncio.sleep(3)  # Simple wait for now
-        # TODO: Implement proper event waiting
-    
+
+        if load_fut is not None:
+            try:
+                await asyncio.wait_for(load_fut, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.warning(f"  goto: timed out waiting for {wait_until} on {url}")
+            finally:
+                handlers = self._event_handlers.get(method)
+                if handlers and _on_load_event in handlers:
+                    handlers.remove(_on_load_event)
+        elif wait_until == "networkidle":
+            await self._wait_for_network_idle(timeout)
+
+        await asyncio.sleep(0.5)  # let client-side rendering settle
+
     async def get_content(self) -> str:
         """Get page HTML content"""
         
@@ -1262,6 +1747,21 @@ class StealthPage:
                 delay += random.uniform(0.2, 0.5)  # occasional "thinking" pause
             await asyncio.sleep(delay)
 
+    async def wheel(self, delta_x: float, delta_y: float):
+        """
+        Dispatch a single mouse-wheel tick at the current cursor position
+        — the same underlying CDP call scroll_to_bottom() uses, exposed
+        directly for callers that want a few deliberate scroll ticks
+        (e.g. light homepage browsing) rather than a full scroll-to-
+        bottom pass.
+        """
+
+        await self._command("Input.dispatchMouseEvent", {
+            "type": "mouseWheel",
+            "x": self._mouse_x, "y": self._mouse_y,
+            "deltaX": delta_x, "deltaY": delta_y,
+        })
+
     async def scroll_to_bottom(self):
         """
         Scroll to the bottom like a user would: variable-sized wheel ticks
@@ -1344,12 +1844,24 @@ class StealthPage:
         }
     
     async def close(self):
-        """Close this page"""
-        
+        """
+        Detach the driver from this page (the tab itself stays open until
+        the browser closes — same as the old per-page WebSocket close).
+        """
+
+        if self._closed:
+            return
+        self._closed = True
         try:
-            await self.ws.close()
+            if not self._conn.closed:
+                await self._conn.send(
+                    "Target.detachFromTarget", {"sessionId": self.session_id},
+                    timeout=5, label=f"page {self.target_id}",
+                )
         except Exception:
             pass
+        finally:
+            self._conn.unregister_session(self.session_id)
 
 
 # ─────────────────────────────────────────────
@@ -1397,8 +1909,6 @@ def get_random_webshare_proxy(
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
-    
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s"
@@ -1411,7 +1921,7 @@ if __name__ == "__main__":
         
         # Launch browser
         async with Jbium() as sb:
-            session = await sb.launch(
+            await sb.launch(
                 proxy_url=proxy_url,
                 headless=False,  # DataDome detects headless
             )

@@ -17,16 +17,16 @@
       "device_memory": [4, 8, 8, 16],
       "gpu_options": [
         {
-          "vendor": "Intel Inc.",
-          "renderer": "Intel(R) Iris(R) Xe Graphics"
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A8) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         },
         {
-          "vendor": "Intel Inc.",
-          "renderer": "Intel(R) UHD Graphics"
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009A78) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         },
         {
-          "vendor": "AMD",
-          "renderer": "AMD Radeon(TM) Graphics"
+          "vendor": "Google Inc. (AMD)",
+          "renderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         }
       ],
       "screen_options": [
@@ -58,20 +58,20 @@
       "device_memory": [16, 32, 32],
       "gpu_options": [
         {
-          "vendor": "NVIDIA Corporation",
-          "renderer": "NVIDIA GeForce RTX 4070/PCIe/SSE2"
+          "vendor": "Google Inc. (NVIDIA)",
+          "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 (0x00002786) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         },
         {
-          "vendor": "NVIDIA Corporation",
-          "renderer": "NVIDIA GeForce RTX 3080/PCIe/SSE2"
+          "vendor": "Google Inc. (NVIDIA)",
+          "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 (0x00002206) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         },
         {
-          "vendor": "NVIDIA Corporation",
-          "renderer": "NVIDIA GeForce RTX 4080/PCIe/SSE2"
+          "vendor": "Google Inc. (NVIDIA)",
+          "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 (0x00002704) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         },
         {
-          "vendor": "AMD",
-          "renderer": "AMD Radeon RX 7900 XT"
+          "vendor": "Google Inc. (AMD)",
+          "renderer": "ANGLE (AMD, AMD Radeon RX 7900 XT (0x0000744C) Direct3D11 vs_5_0 ps_5_0, D3D11)"
         }
       ],
       "screen_options": [
@@ -100,8 +100,8 @@
       ],
       "device_memory": [8, 16, 16],
       "gpu_options": [
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"},
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics 620"}
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A8) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00005917) Direct3D11 vs_5_0 ps_5_0, D3D11)"}
       ],
       "screen_options": [
         {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
@@ -127,8 +127,8 @@
       ],
       "device_memory": [8, 8, 16],
       "gpu_options": [
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"},
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics"}
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A8) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00009A78) Direct3D11 vs_5_0 ps_5_0, D3D11)"}
       ],
       "screen_options": [
         {"w": 1920, "h": 1280, "dpr": 1.5, "rate": 60},
@@ -155,9 +155,9 @@
       ],
       "device_memory": [8, 16, 16],
       "gpu_options": [
-        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce GTX 1660/PCIe/SSE2"},
-        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce GTX 1060/PCIe/SSE2"},
-        {"vendor": "AMD", "renderer": "AMD Radeon RX 580"}
+        {"vendor": "Google Inc. (NVIDIA)", "renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 (0x00002184) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
+        {"vendor": "Google Inc. (NVIDIA)", "renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 6GB (0x00001C03) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
+        {"vendor": "Google Inc. (AMD)", "renderer": "ANGLE (AMD, Radeon RX 580 Series (0x000067DF) Direct3D11 vs_5_0 ps_5_0, D3D11)"}
       ],
       "screen_options": [
         {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
@@ -183,8 +183,8 @@
       ],
       "device_memory": [8, 16, 16],
       "gpu_options": [
-        {"vendor": "Apple", "renderer": "Apple M1 Pro"},
-        {"vendor": "Apple", "renderer": "Apple M2"}
+        {"vendor": "Google Inc. (Apple)", "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)"},
+        {"vendor": "Google Inc. (Apple)", "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)"}
       ],
       "screen_options": [
         {"w": 1512, "h": 982, "dpr": 2.0, "rate": 120},
@@ -211,8 +211,8 @@
       ],
       "device_memory": [8, 16, 16, 18],
       "gpu_options": [
-        {"vendor": "Apple", "renderer": "Apple M3"},
-        {"vendor": "Apple", "renderer": "Apple M3 Pro"}
+        {"vendor": "Google Inc. (Apple)", "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)"},
+        {"vendor": "Google Inc. (Apple)", "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)"}
       ],
       "screen_options": [
         {"w": 1512, "h": 982, "dpr": 2.0, "rate": 120},
@@ -237,8 +237,8 @@
       ],
       "device_memory": [8, 8, 16],
       "gpu_options": [
-        {"vendor": "Apple", "renderer": "Apple M1"},
-        {"vendor": "Apple", "renderer": "Apple M2"}
+        {"vendor": "Google Inc. (Apple)", "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)"},
+        {"vendor": "Google Inc. (Apple)", "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)"}
       ],
       "screen_options": [
         {"w": 1440, "h": 900, "dpr": 2.0, "rate": 60},
@@ -264,8 +264,8 @@
       ],
       "device_memory": [4, 8, 8],
       "gpu_options": [
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics 600"},
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) UHD Graphics 605"}
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 600 (0x00003185) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 605 (0x00003184) Direct3D11 vs_5_0 ps_5_0, D3D11)"}
       ],
       "screen_options": [
         {"w": 1366, "h": 768, "dpr": 1.0, "rate": 60},
@@ -291,8 +291,8 @@
       ],
       "device_memory": [16, 32, 32],
       "gpu_options": [
-        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce RTX 3060/PCIe/SSE2"},
-        {"vendor": "AMD", "renderer": "AMD Radeon RX 6700 XT"}
+        {"vendor": "Google Inc. (NVIDIA Corporation)", "renderer": "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3060/PCIe/SSE2, OpenGL 4.5.0)"},
+        {"vendor": "Google Inc. (AMD)", "renderer": "ANGLE (AMD, AMD Radeon RX 6700 XT (navi22 LLVM 15.0.7), OpenGL 4.6)"}
       ],
       "screen_options": [
         {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
@@ -317,8 +317,8 @@
       ],
       "device_memory": [8, 16],
       "gpu_options": [
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"},
-        {"vendor": "AMD", "renderer": "AMD Radeon(TM) Graphics"}
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Mesa Intel(R) Xe Graphics (TGL GT2), OpenGL 4.6)"},
+        {"vendor": "Google Inc. (AMD)", "renderer": "ANGLE (AMD, AMD Radeon Graphics (renoir LLVM 15.0.7), OpenGL 4.6)"}
       ],
       "screen_options": [
         {"w": 1920, "h": 1080, "dpr": 1.0, "rate": 60},
@@ -343,8 +343,8 @@
       ],
       "device_memory": [16, 32],
       "gpu_options": [
-        {"vendor": "NVIDIA Corporation", "renderer": "NVIDIA GeForce RTX 4060/PCIe/SSE2"},
-        {"vendor": "Intel Inc.", "renderer": "Intel(R) Iris(R) Xe Graphics"}
+        {"vendor": "Google Inc. (NVIDIA)", "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU (0x000028A0) Direct3D11 vs_5_0 ps_5_0, D3D11)"},
+        {"vendor": "Google Inc. (Intel)", "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A8) Direct3D11 vs_5_0 ps_5_0, D3D11)"}
       ],
       "screen_options": [
         {"w": 3840, "h": 2160, "dpr": 1.5, "rate": 60},

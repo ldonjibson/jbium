@@ -205,11 +205,17 @@ third_party/blink/renderer/modules/webgl/webgl2_rendering_context_base.cc
 
 **Environment variables:**
 - `STEALTH_GPU_VENDOR` — e.g. `"Google Inc. (NVIDIA)"`
-- `STEALTH_GPU_RENDERER` — e.g. `"ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)"`
-- `STEALTH_GPU_VERSION` — e.g. `"OpenGL ES 2.0 Chromium"`
-- `STEALTH_GPU_GLSL_VERSION` — e.g. `"OpenGL ES GLSL ES 1.0.17"`
+- `STEALTH_GPU_RENDERER` — e.g. `"ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)"`
+- `STEALTH_GPU_VERSION` / `STEALTH_GPU_GLSL_VERSION` — supported by the
+  patch, but the driver deliberately leaves them unset: the real inner
+  strings are the constants `"OpenGL ES 2.0 Chromium"` /
+  `"OpenGL ES GLSL ES 1.0 Chromium"` (3.0 for WebGL2) on every machine
+  (`gpu/command_buffer/service/gl_utils.cc`), so any override is a tell.
 
-Unset = real values pass through unchanged.
+Unset = real values pass through unchanged. The vendor/renderer values
+in `config/fingerprints.json` follow ANGLE's exact formats for the
+pinned ANGLE revision: D3D11 on Windows, Metal on macOS, desktop GL on
+Linux.
 
 ---
 
@@ -327,11 +333,15 @@ net/http/http_util.cc
 ```
 
 **Environment variables:**
-- `STEALTH_GEO_LANGUAGES` — e.g. `"ja-JP,en;q=0.8"` (navigator
-  languages + Accept-Language header)
+- `STEALTH_GEO_LANGUAGES` — a plain comma-separated list, e.g.
+  `"ja,en-US,en"` (navigator.languages; the Accept-Language patch
+  appends its own descending q-values). No `;q=` in the value:
+  Blink's `ParseAndSanitize` only splits on commas, so a q-value would
+  end up inside a `navigator.languages` entry. The driver uses Chrome's
+  own default list for the profile's UI locale.
 - `TZ` — e.g. `"Asia/Tokyo"` (set by driver; read by libc/ICU)
-- plus `STEALTH_GEO_COUNTRY/COUNTRY_NAME/CITY/TIMEZONE/LANGUAGE/
-  LOCALE/LATITUDE/LONGITUDE/CURRENCY` for driver-side consumers
+- The driver also sets the matching UI locale (`--lang`, plus
+  `LANGUAGE` on Linux), which decides Intl's default locale.
 
 ---
 

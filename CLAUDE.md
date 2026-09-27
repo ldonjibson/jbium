@@ -162,13 +162,27 @@ failure, prefer `tee` + full log over any truncating pipe.
   `tr -d '\r'` in that pipe. Files committed via `git commit` are fine
   (autocrlf normalizes to LF in the stored blob) — this only bites
   manual out-of-band transfers.
-- `--remote-debugging-port` (what the driver uses) is an open,
-  unauthenticated local HTTP/WebSocket endpoint — a page the browser
-  loads can `fetch('http://127.0.0.1:<port>/json/version')` and
-  brute-force the whole port range to detect CDP automation.
-  `--remote-debugging-pipe` closes this (stdin/stdout instead of a
-  TCP port) but is a real transport-layer rewrite, not a flag swap —
-  see conversation history if picking this up.
+- The driver talks CDP over `--remote-debugging-pipe`
+  (`driver/cdp_pipe.py`), not `--remote-debugging-port`. A TCP
+  debugging port is an open, unauthenticated local endpoint a page can
+  find with `fetch('http://127.0.0.1:<port>/json/version')`. The pipe
+  is fds 3 (in) / 4 (out), NUL-terminated JSON, and page traffic goes
+  through flattened `Target.attachToTarget` sessions. On Windows the
+  child's CRT fds 3/4 have to come from `STARTUPINFO.lpReserved2`
+  (Python's `subprocess` can't do that), hence the `CreateProcessW`
+  path. `launch(expose_cdp_port=True)` re-opens a TCP port for
+  Playwright on request only. `tests/test_leak_fixes.py` covers this
+  against any local Chrome. Note: the pipe switch turns on Blink's
+  `AutomationControlled` feature (`content/child/runtime_features.cc`),
+  so patch 001's `Navigator::webdriver() → false` is now load-bearing:
+  never drop it.
+- `--user-agent` does NOT change the `Sec-CH-UA*` request headers: the
+  browser process still sends the real build's low-entropy hints
+  (`components/embedder_support/user_agent_utils.cc`). Patch 007 only
+  fixes the JS side, so `new_page()` also sends
+  `Emulation.setUserAgentOverride` with full `userAgentMetadata`. Don't
+  drop that call. Pages opened by anything else need
+  `Jbium.client_hints_override()`.
 - The Linux binary is genuinely Linux-only (ELF, glibc/GTK/X11-linked)
   — WSL2 can run it unmodified today; native Windows/macOS need their
   own builds via `build_windows.bat`/`build_macos.sh`, neither of

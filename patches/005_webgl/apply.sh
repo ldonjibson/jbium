@@ -26,10 +26,13 @@ webgl_rendering_context_base.cc, getParameter):
   These expose the real GPU (and with --disable-gpu, a SwiftShader
   string that instantly flags a software/headless browser).
 - GL_VERSION / GL_SHADING_LANGUAGE_VERSION: the masked strings are
-  "WebGL 1.0 (<driver version>)" / "WebGL GLSL ES 1.0 (<driver>)"
-  where the inner segment comes from
-  ContextGL()->GetString(GL_VERSION / GL_SHADING_LANGUAGE_VERSION)
-  — again a SwiftShader giveaway under --disable-gpu.
+  "WebGL 1.0 (<inner>)" / "WebGL GLSL ES 1.0 (<inner>)" where the
+  inner segment comes from
+  ContextGL()->GetString(GL_VERSION / GL_SHADING_LANGUAGE_VERSION).
+  The GPU process answers those with fixed constants
+  ("OpenGL ES 2.0 Chromium" / "OpenGL ES GLSL ES 1.0 Chromium", 3.0
+  for WebGL2 — gpu/command_buffer/service/gl_utils.cc), identical on
+  every machine, so the driver leaves these two overrides unset.
 
 Patch strategy: wrap each of those four expressions (they are
 identical in the WebGL1 and WebGL2 files) with a header-only
@@ -50,8 +53,8 @@ Env vars (set by the jbium driver):
 - STEALTH_GPU_VENDOR      e.g. "Google Inc. (NVIDIA)"
 - STEALTH_GPU_RENDERER    e.g. "ANGLE (NVIDIA, NVIDIA GeForce RTX
                            3060 Direct3D11 vs_5_0 ps_5_0)"
-- STEALTH_GPU_VERSION     e.g. "OpenGL ES 2.0 Chromium"
-- STEALTH_GPU_GLSL_VERSION e.g. "OpenGL ES GLSL ES 1.0.17"
+- STEALTH_GPU_VERSION     (driver leaves unset; see above)
+- STEALTH_GPU_GLSL_VERSION (driver leaves unset; see above)
 Unset variables pass the real driver value through unchanged.
 """
 
