@@ -40,7 +40,10 @@ you PASS/FAIL instead of "here's a picture, you decide":
      navigator.userAgentData (brands, fullVersionList, architecture,
      bitness, platformVersion) matches the User-Agent and the profile,
      and the Sec-CH-UA* headers a server actually receives say the same
-     thing (read back from https://httpbin.org/headers).
+     thing (read back from https://httpbin.org/headers). Also checks
+     that Widevine DRM is available: real Google Chrome always ships it,
+     a plain Chromium build usually doesn't (Clear Key is probed as a
+     control, to tell "Widevine missing" from "EME unavailable").
 
   5. A CreepJS visit + full-page screenshot, same as visit_creepjs.py --
      its detailed trust-score breakdown isn't something to reimplement,
@@ -84,7 +87,11 @@ async () => {
 
     // 1. Classic automation tells
     results.webdriver = navigator.webdriver;
-    results.hasChromeRuntime = !!(window.chrome && window.chrome.runtime);
+    // Real Chrome exposes window.chrome with loadTimes/csi/app on every
+    // page. chrome.runtime is NOT expected: Chrome only exposes it to
+    // pages an installed extension lists in externally_connectable
+    // (verified: stock Chrome on CreepJS reports it undefined).
+    results.chromeKeys = window.chrome ? Object.keys(window.chrome).sort() : null;
     results.pluginsLength = navigator.plugins.length;
 
     // Permissions-API / Notification.permission mismatch: in real
@@ -119,6 +126,28 @@ async () => {
         results.uaHighEntropy = await uad.getHighEntropyValues(
             ['architecture', 'bitness', 'model', 'platformVersion', 'fullVersionList', 'uaFullVersion']);
     }
+
+    // EME / DRM: real Google Chrome ships the Widevine CDM (downloaded by
+    // its component updater); a Chromium build usually has none, so a
+    // "Chrome" that can't do Widevine contradicts its own User-Agent.
+    // Clear Key is built into every EME-capable browser -- it's the
+    // control that tells "Widevine missing" apart from "EME unavailable".
+    const emeConfig = [{
+        initDataTypes: ['cenc'],
+        audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+        videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }],
+    }];
+    const probeKeySystem = async (keySystem) => {
+        if (!navigator.requestMediaKeySystemAccess) return 'no-eme-api';
+        try {
+            await navigator.requestMediaKeySystemAccess(keySystem, emeConfig);
+            return 'supported';
+        } catch (e) {
+            return `${e.name}: ${e.message}`;
+        }
+    };
+    results.emeClearKey = await probeKeySystem('org.w3.clearkey');
+    results.emeWidevine = await probeKeySystem('com.widevine.alpha');
 
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
@@ -223,8 +252,10 @@ async def main(keep_open: bool) -> None:
         if not _report("navigator.webdriver is false/undefined",
                         not checks["webdriver"], f"got {checks['webdriver']!r}"):
             failures += 1
-        if not _report("window.chrome.runtime present (real Chrome has this)",
-                        checks["hasChromeRuntime"]):
+        chrome_keys = checks["chromeKeys"]
+        if not _report("window.chrome has loadTimes/csi/app (as real Chrome does)",
+                        chrome_keys is not None and {"loadTimes", "csi", "app"} <= set(chrome_keys),
+                        f"got {chrome_keys!r}"):
             warnings += 1
         if not _report("navigator.plugins non-empty",
                         checks["pluginsLength"] > 0, f"length={checks['pluginsLength']}"):
@@ -264,6 +295,17 @@ async def main(keep_open: bool) -> None:
         if not _report("WebGL SHADING_LANGUAGE_VERSION is Chrome's constant",
                         checks.get("webglGlslVersion") == "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)",
                         f"got {checks.get('webglGlslVersion')!r}"):
+            failures += 1
+
+        # Widevine: the page claims to be Google Chrome, which always has it.
+        clear_key, widevine = checks.get("emeClearKey"), checks.get("emeWidevine")
+        if clear_key != "supported":
+            print(f"  [WARN] EME itself unavailable (Clear Key: {clear_key!r}) -- "
+                  "Widevine result below is not meaningful")
+            warnings += 1
+        if not _report("Widevine DRM available (real Chrome always has it)",
+                        widevine == "supported",
+                        f"Clear Key={clear_key!r}, Widevine={widevine!r}"):
             failures += 1
 
         high_entropy = checks.get("uaHighEntropy") or {}
