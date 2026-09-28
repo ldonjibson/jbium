@@ -96,6 +96,31 @@ async def ip_location_via_proxy(proxy_url: str) -> dict:
         return {"status": "fail", "message": f"{type(e).__name__}: {e}"}
 
 
+async def connection_fingerprint(page):
+    """
+    The TLS / HTTP2 fingerprint this browser presents -- what DataDome can
+    judge before any page JavaScript runs (a block on the very first
+    request is decided on IP + this + headers alone). tls.peet.ws echoes
+    the ClientHello and HTTP/2 SETTINGS it received, through the same
+    proxy/session the scraper uses.
+    """
+    await page.goto("https://tls.peet.ws/api/all")
+    raw = await page.evaluate("document.body ? document.body.innerText : ''")
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        print(f"\n=== Connection fingerprint: could not read tls.peet.ws ({(raw or '')[:120]!r})")
+        return
+    tls, http2 = data.get("tls", {}), data.get("http2", {})
+    print("\n=== Connection fingerprint (tls.peet.ws)")
+    print(f"  http_version: {data.get('http_version')}")
+    print(f"  ja4:          {tls.get('ja4')}")
+    print(f"  ja3_hash:     {tls.get('ja3_hash')}  (varies per connection in Chrome: extension order is randomized)")
+    print(f"  peetprint:    {tls.get('peetprint_hash')}")
+    print(f"  http2 akamai: {http2.get('akamai_fingerprint')}")
+    print(f"  user-agent seen: {data.get('user_agent')}")
+
+
 async def visit(page, url: str, label: str):
     documents = []
 
@@ -154,6 +179,7 @@ async def main(listing: str, home: str):
               f"ip_type={getattr(geo.ip_type, 'value', geo.ip_type)} asn={geo.asn} isp={geo.isp}")
 
         page = await browser.new_page()
+        await connection_fingerprint(page)
         await visit(page, home, "home")
         await visit(page, listing, "listing")
 
