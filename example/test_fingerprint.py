@@ -392,7 +392,15 @@ async def main(keep_open: bool) -> None:
             warnings += 1
         else:
             major = claimed_version.split(".")[0]
+            # Chrome's own Accept-Language format: first language bare, then
+            # q-values stepping down by 0.1 (floor 0.1).
+            expected_accept_language = ",".join(
+                lang if i == 0 else f"{lang};q={max(0.1, 1 - i / 10):.1f}"
+                for i, lang in enumerate(checks["languages"] or [])
+            )
             for label, header, ok_fn in [
+                ("Accept-Language header == navigator.languages", "accept-language",
+                 lambda v: v == expected_accept_language),
                 ("User-Agent header == navigator.userAgent", "user-agent",
                  lambda v: v == checks["userAgent"]),
                 ("Sec-CH-UA-Platform header == profile", "sec-ch-ua-platform",
