@@ -2041,12 +2041,62 @@ class StealthPage:
 # Utility functions
 # ─────────────────────────────────────────────
 
+# Proxies that just got blocked, shared across runs (each Jenkins run is a
+# new process, so this lives on disk): {proxy key: unix time it's usable again}.
+PROXY_COOLDOWN_FILE = Path.home() / ".cache" / "jbium" / "proxy_cooldown.json"
+DEFAULT_BLOCK_COOLDOWN_MINUTES = 180
+
+
+class ProxyPoolExhausted(RuntimeError):
+    """Every proxy in the pool is cooling down after a block."""
+
+
+def _proxy_key(proxy_url: str) -> str:
+    """Identify a proxy by its username (e.g. "prefix-37" = one fixed Webshare IP), else host:port."""
+    parts = urlsplit(proxy_url)
+    return parts.username or f"{parts.hostname}:{parts.port}"
+
+
+def _load_cooldowns() -> Dict[str, float]:
+    try:
+        data = json.loads(PROXY_COOLDOWN_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    now = time.time()
+    return {key: until for key, until in data.items() if isinstance(until, (int, float)) and until > now}
+
+
+def mark_proxy_blocked(proxy_url: str, cooldown_minutes: float = DEFAULT_BLOCK_COOLDOWN_MINUTES) -> None:
+    """
+    Record that a site blocked this proxy, so get_random_webshare_proxy()
+    leaves it alone for `cooldown_minutes`. A block is a reputation signal
+    about that IP, not a transient failure: sending it straight back in
+    (or retrying seconds later) just adds another flagged visit.
+    """
+
+    cooldowns = _load_cooldowns()
+    cooldowns[_proxy_key(proxy_url)] = time.time() + cooldown_minutes * 60
+    PROXY_COOLDOWN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    # Write-then-rename so a concurrent reader never sees a half-written file.
+    tmp = PROXY_COOLDOWN_FILE.with_name(f"{PROXY_COOLDOWN_FILE.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(cooldowns, indent=2), encoding="utf-8")
+    os.replace(tmp, PROXY_COOLDOWN_FILE)
+    logger.info(f"Proxy {_proxy_key(proxy_url)} cooling down for {cooldown_minutes:g} min after a block")
+
+
+def proxy_is_cooling(proxy_url: str) -> bool:
+    """True if mark_proxy_blocked() put this proxy on cooldown and it hasn't expired."""
+    return _proxy_key(proxy_url) in _load_cooldowns()
+
+
 def get_random_webshare_proxy(
     username_prefix: Optional[str] = None,
     password: Optional[str] = None,
     endpoint: Optional[str] = None,
     port: Optional[int] = None,
     mode: str = "numbered",
+    pool_size: Optional[int] = None,
+    skip_cooling: bool = True,
 ) -> str:
     """
     Generate a random Webshare proxy URL.
@@ -2055,12 +2105,18 @@ def get_random_webshare_proxy(
     STEALTH_WEBSHARE_USERNAME / STEALTH_WEBSHARE_PASSWORD / STEALTH_WEBSHARE_ENDPOINT /
     STEALTH_WEBSHARE_PORT in the environment. Endpoint/port fall back to
     Webshare's default proxy host if neither is given.
+
+    "numbered" mode picks one of `pool_size` fixed IPs (default 100, or
+    STEALTH_WEBSHARE_POOL_SIZE), skipping any that mark_proxy_blocked()
+    put on cooldown unless skip_cooling=False. Raises ProxyPoolExhausted
+    if every one is cooling down.
     """
 
     username_prefix = username_prefix or os.environ.get("STEALTH_WEBSHARE_USERNAME")
     password = password or os.environ.get("STEALTH_WEBSHARE_PASSWORD")
     endpoint = endpoint or os.environ.get("STEALTH_WEBSHARE_ENDPOINT", "p.webshare.io")
     port = port or int(os.environ.get("STEALTH_WEBSHARE_PORT", "80"))
+    pool_size = pool_size or int(os.environ.get("STEALTH_WEBSHARE_POOL_SIZE", "100"))
 
     if not username_prefix or not password:
         raise RuntimeError(
@@ -2069,11 +2125,19 @@ def get_random_webshare_proxy(
         )
 
     if mode == "rotating":
-        username = f"{username_prefix}-rotate"
-    else:
-        num = random.randint(1, 100)
-        username = f"{username_prefix}-{num}"
-    
+        return f"http://{username_prefix}-rotate:{password}@{endpoint}:{port}"
+
+    cooling = _load_cooldowns() if skip_cooling else {}
+    available = [n for n in range(1, pool_size + 1) if f"{username_prefix}-{n}" not in cooling]
+    if not available:
+        soonest = min(cooling.values())
+        raise ProxyPoolExhausted(
+            f"All {pool_size} proxies are cooling down after blocks; the first frees up at "
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(soonest))}. "
+            f"Wait, use fresh IPs, or clear {PROXY_COOLDOWN_FILE}."
+        )
+
+    username = f"{username_prefix}-{random.choice(available)}"
     return f"http://{username}:{password}@{endpoint}:{port}"
 
 

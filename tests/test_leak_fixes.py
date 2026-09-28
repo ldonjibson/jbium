@@ -505,3 +505,46 @@ def test_country_geo_covers_every_tzdata_country():
     assert len(data) >= 240
     for cc, entry in data.items():
         assert entry["timezones"] and "-" in entry["language"], cc
+
+
+# ─────────────────────────────────────────────
+# Proxy cooldown after a block
+# ─────────────────────────────────────────────
+
+import driver.stealth_browser as stealth_browser_module  # noqa: E402
+
+
+@pytest.fixture
+def cooldown_file(tmp_path, monkeypatch):
+    path = tmp_path / "proxy_cooldown.json"
+    monkeypatch.setattr(stealth_browser_module, "PROXY_COOLDOWN_FILE", path)
+    monkeypatch.setenv("STEALTH_WEBSHARE_USERNAME", "user")
+    monkeypatch.setenv("STEALTH_WEBSHARE_PASSWORD", "pw")
+    return path
+
+
+def test_blocked_proxy_is_skipped_until_cooldown_ends(cooldown_file):
+    get = stealth_browser_module.get_random_webshare_proxy
+    blocked = "http://user-2:pw@p.webshare.io:80"
+    stealth_browser_module.mark_proxy_blocked(blocked, cooldown_minutes=60)
+
+    assert stealth_browser_module.proxy_is_cooling(blocked)
+    picks = {get(pool_size=3) for _ in range(200)}
+    assert picks == {"http://user-1:pw@p.webshare.io:80", "http://user-3:pw@p.webshare.io:80"}
+    # Persisted for the next process (the next Jenkins run).
+    assert "user-2" in json.loads(cooldown_file.read_text())
+    # skip_cooling=False still allows it.
+    assert blocked in {get(pool_size=3, skip_cooling=False) for _ in range(200)}
+
+
+def test_expired_cooldown_frees_the_proxy(cooldown_file):
+    stealth_browser_module.mark_proxy_blocked("http://user-1:pw@h:80", cooldown_minutes=-1)
+    assert not stealth_browser_module.proxy_is_cooling("http://user-1:pw@h:80")
+    assert stealth_browser_module.get_random_webshare_proxy(pool_size=1).startswith("http://user-1:")
+
+
+def test_all_proxies_cooling_raises(cooldown_file):
+    for n in (1, 2):
+        stealth_browser_module.mark_proxy_blocked(f"http://user-{n}:pw@h:80")
+    with pytest.raises(stealth_browser_module.ProxyPoolExhausted):
+        stealth_browser_module.get_random_webshare_proxy(pool_size=2)

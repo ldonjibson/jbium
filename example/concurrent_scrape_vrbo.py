@@ -39,6 +39,7 @@ Usage:
 
 import asyncio
 import json
+import random
 import re
 import sys
 import time
@@ -51,9 +52,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
-    from driver.stealth_browser import Jbium, get_random_webshare_proxy
+    from driver.stealth_browser import (
+        Jbium, ProxyPoolExhausted, get_random_webshare_proxy, mark_proxy_blocked,
+    )
 except ModuleNotFoundError:
-    from jbium.stealth_browser import Jbium, get_random_webshare_proxy
+    from jbium.stealth_browser import (
+        Jbium, ProxyPoolExhausted, get_random_webshare_proxy, mark_proxy_blocked,
+    )
 
 URLS = [
     "https://www.vrbo.com/1457914?dateless=true",
@@ -73,7 +78,15 @@ CONCURRENCY = 4
 STAGGER_SEC = 2.0   # spread concurrent cold-starts out a little, purely
                     # to look less robotic and ease startup bursts -- not
                     # required for correctness since the uuid4 fix
-MAX_ATTEMPTS = 2    # retry once on a transient failure
+MAX_ATTEMPTS = 2    # one retry
+# A block and a transient failure are handled differently:
+#  - transient (timeout, proxy hiccup): quick retry, same as before;
+#  - blocked (DataDome captcha / 429): the proxy is put on cooldown so no
+#    session -- this run or the next -- picks it again for a while, and
+#    the retry waits much longer, on a different, non-cooling proxy.
+#    Retrying seconds after a block just adds another flagged visit.
+TRANSIENT_RETRY_SEC = 3.0
+BLOCKED_RETRY_SEC = (60.0, 120.0)   # random wait in this range
 
 RESULTS_DIR = Path(__file__).parent / "vrbo_batch_results"
 SCREENSHOT_DIR = RESULTS_DIR / "screenshots"
@@ -93,8 +106,17 @@ def listing_id(url: str) -> str:
     return m.group(1) if m else url.replace("/", "_")
 
 
+class DetectionBlocked(Exception):
+    """The page was a block/challenge page; carries the proxy that got blocked."""
+
+    def __init__(self, url: str, proxy_url: str, detection: dict):
+        signals = [k for k, v in detection.items() if v and k != "detected"]
+        super().__init__(f"{url} blocked (signals: {', '.join(signals)})")
+        self.proxy_url = proxy_url
+
+
 async def scrape_attempt(url: str, lid: str) -> dict:
-    proxy_url = get_random_webshare_proxy()
+    proxy_url = get_random_webshare_proxy()  # skips proxies cooling down after a block
 
     async with Jbium() as browser:
         await browser.launch(proxy_url=proxy_url, headless=False)
@@ -103,13 +125,15 @@ async def scrape_attempt(url: str, lid: str) -> dict:
         await page.idle(5.0)  # let async fingerprinting/content settle
 
         detection = await page.check_detection()
+        if detection.get("detected"):
+            raise DetectionBlocked(url, proxy_url, detection)
         data = await page.evaluate(EXTRACT_JS)
 
         screenshot_path = SCREENSHOT_DIR / f"{lid}.png"
         await page.screenshot(str(screenshot_path))
 
         return {
-            "success": not detection.get("detected", False),
+            "success": True,
             "detection": detection,
             "title": data.get("title"),
             "h1": data.get("h1"),
@@ -139,11 +163,23 @@ async def scrape_one(url: str, index: int, sem: asyncio.Semaphore) -> dict:
                 print(f"[OK]   {lid} (attempt {attempt}): {data['title']!r} "
                       f"(detected={data['detection'].get('detected')})")
                 return result
+            except ProxyPoolExhausted as e:
+                # Nothing left to try with: don't burn a retry on it.
+                result.update({"success": False, "error": str(e),
+                               "elapsed_sec": round(time.time() - start, 1)})
+                print(f"[FAIL] {lid}: {e}")
+                return result
             except Exception as e:
                 err = f"{type(e).__name__}: {e}"
+                blocked = isinstance(e, DetectionBlocked)
+                if blocked:
+                    mark_proxy_blocked(e.proxy_url)
+                    result["blocked"] = True
                 if attempt < MAX_ATTEMPTS:
-                    print(f"[RETRY] {lid} (attempt {attempt}): {err}")
-                    await asyncio.sleep(3.0)
+                    wait = random.uniform(*BLOCKED_RETRY_SEC) if blocked else TRANSIENT_RETRY_SEC
+                    print(f"[RETRY] {lid} (attempt {attempt}): {err} -- retrying in {wait:.0f}s"
+                          f"{' on a different proxy' if blocked else ''}")
+                    await asyncio.sleep(wait)
                     continue
                 result.update({
                     "success": False,

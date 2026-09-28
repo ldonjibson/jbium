@@ -125,6 +125,12 @@ async def connection_fingerprint(page):
     print(f"  ja3_hash:     {tls.get('ja3_hash')}  (varies per connection in Chrome: extension order is randomized)")
     print(f"  peetprint:    {tls.get('peetprint_hash')}")
     print(f"  http2 akamai: {akamai}  [{'matches' if akamai == CHROME_HTTP2_AKAMAI else 'DIFFERS from'} Chrome]")
+    # Names, so a JA4 extension-count change (1516 -> 1517) can be traced
+    # to the exact extension (e.g. pre_shared_key on a resumed session,
+    # padding added by BoringSSL for certain hello sizes).
+    names = [str(ext.get("name", "?")) for ext in tls.get("extensions", [])
+             if "GREASE" not in str(ext.get("name", ""))]
+    print(f"  extensions ({len(names)}, GREASE excluded): {', '.join(names)}")
     print(f"  user-agent seen: {data.get('user_agent')}")
 
 
@@ -182,8 +188,15 @@ async def main(listing: str, home: str):
     async with Jbium() as browser:
         session = await browser.launch(proxy_url=proxy_url, headless=False)
         geo = session.geo_profile
+        ip_type = getattr(geo.ip_type, "value", geo.ip_type)
         print(f"  driver profile: {geo.country_code} {geo.city} tz={geo.timezone} lang={geo.language} "
-              f"ip_type={getattr(geo.ip_type, 'value', geo.ip_type)} asn={geo.asn} isp={geo.isp}")
+              f"ip_type={ip_type} asn={geo.asn} isp={geo.isp}")
+        # ip-api's hosting/proxy flags miss many hosting ranges (e.g.
+        # Leaseweb showed hosting=false); the driver's ASN-name classifier
+        # is a second opinion.
+        if ip_type in ("datacenter", "hosting", "vpn", "cdn") and not (where.get("hosting") or where.get("proxy")):
+            print(f"  WARNING: ip-api calls this exit clean, but its network ({geo.isp}) is a known "
+                  f"{ip_type} provider -- this is not a residential IP.")
         # The driver resolves its own exit IP on a separate connection. If
         # it differs from ip-api's, the proxy is handing out different exits
         # per connection, and the profile (timezone/language) was built for
