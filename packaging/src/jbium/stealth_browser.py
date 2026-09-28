@@ -193,6 +193,7 @@ class Jbium:
         self._pages: List["StealthPage"] = []
         self._proxy_auth_extension_dir: Optional[str] = None
         self._user_data_dir: Optional[str] = None
+        self._xvfb_process: Optional[subprocess.Popen] = None
 
         # CDP transport: --remote-debugging-pipe (see driver/cdp_pipe.py).
         # No TCP debugging port exists unless launch(expose_cdp_port=True)
@@ -463,6 +464,17 @@ class Jbium:
                     continue
             self._browser_process = None
         self._debug_port = None
+
+        # Stop this session's virtual display (after the browser, which
+        # is still connected to it until it exits).
+        xvfb = self._xvfb_process
+        if xvfb:
+            xvfb.terminate()
+            try:
+                await asyncio.get_running_loop().run_in_executor(None, xvfb.wait, 5)
+            except subprocess.TimeoutExpired:
+                xvfb.kill()
+            self._xvfb_process = None
 
         # Remove the temporary proxy-auth extension directory, if one was
         # generated for this session (contains the proxy password on disk).
@@ -801,6 +813,40 @@ class Jbium:
         if not headless:
             args.append(f"--window-size={device_profile.screen_width},{device_profile.screen_height}")
 
+        # Screen size / pixel ratio (Linux, headed). No patch spoofs
+        # screen.*: the page sees the X display the browser runs on, which
+        # on a server is typically Xvfb's 1280x1024 default. Give each
+        # session its own Xvfb sized to the profile's physical resolution
+        # and force the profile's device pixel ratio, so screen.width/
+        # height, devicePixelRatio, colorDepth and the matching CSS media
+        # queries all report the profile. (availWidth/availHeight equal
+        # the screen size: there is no desktop panel on a bare Xvfb.)
+        virtual_display = None
+        if (
+            not headless
+            and sys.platform.startswith("linux")
+            and self.config.get("browser", {}).get("virtual_display", True)
+        ):
+            virtual_display = await self._start_virtual_display(device_profile)
+            if virtual_display:
+                args.append(f"--force-device-scale-factor={device_profile.device_pixel_ratio:g}")
+                args.append("--window-position=0,0")
+        if (
+            not headless
+            and sys.platform.startswith("linux")
+            and not virtual_display
+            and not os.environ.get("DISPLAY")
+            and not os.environ.get("WAYLAND_DISPLAY")
+        ):
+            # Otherwise the browser exits at once with only "Missing X
+            # server or $DISPLAY" on stderr.
+            raise RuntimeError(
+                "Headed launch on Linux needs a display, and none is available: "
+                "$DISPLAY is unset and no virtual display was started. Install "
+                "Xvfb (apt-get install xvfb) so the driver can start one per "
+                "session, run under xvfb-run, or launch with headless=True."
+            )
+
         # Headless (careful — use our custom headless mode)
         if headless:
             args.append("--headless=new")  # New headless mode (less detectable)
@@ -928,6 +974,10 @@ class Jbium:
         args.append(f"--lang={ui_locale}")
         self._warn_if_locale_missing(ui_locale)
 
+        # Software WebGL fallback on GPU-less machines needs SwiftShader's
+        # Vulkan ICD manifest next to the binary (see _ensure_swiftshader_icd).
+        self._ensure_swiftshader_icd()
+
         # Anti-detection args
         extra_args = list(self.config.get("browser", {}).get("extra_args", []))
         port_args = [a for a in extra_args if a.startswith("--remote-debugging-")]
@@ -951,10 +1001,12 @@ class Jbium:
         }
         env.update(env_vars)
         if sys.platform.startswith("linux"):
-            # glib format: underscore separator, colon-separated fallbacks.
             # glib's format uses "_" ("en_GB", "es_419"); Chrome maps it
             # back to the same UI locale.
             env["LANGUAGE"] = ui_locale.replace("-", "_")
+        if virtual_display:
+            env["DISPLAY"] = virtual_display
+            env.pop("WAYLAND_DISPLAY", None)  # keep Chrome on the X11 display
 
         logger.info(f"  Launching: {' '.join(args[:5])}...")
         logger.debug(f"  Full command: {' '.join(args)}")
@@ -985,6 +1037,126 @@ class Jbium:
         threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
 
         return process
+
+    async def _start_virtual_display(self, device: DeviceProfile, timeout: float = 10) -> Optional[str]:
+        """
+        Start a private Xvfb sized to the profile's physical resolution
+        (CSS size x device pixel ratio, e.g. 1728x1117 @2x -> 3456x2234)
+        and return its DISPLAY value, or None if Xvfb isn't installed or
+        didn't start (the browser then uses the inherited DISPLAY, and a
+        warning says the screen size won't match the profile).
+
+        -displayfd lets Xvfb pick a free display number itself and report
+        it, so concurrent sessions can't collide on a number.
+        """
+
+        xvfb = shutil.which("Xvfb")
+        if not xvfb:
+            logger.warning(
+                "  Xvfb not found — screen size will be the inherited display's, "
+                "not the profile's (install the xvfb package)"
+            )
+            return None
+
+        width = round(device.screen_width * device.device_pixel_ratio)
+        height = round(device.screen_height * device.device_pixel_ratio)
+        read_fd, write_fd = os.pipe()
+        try:
+            process = subprocess.Popen(
+                [xvfb, "-displayfd", str(write_fd), "-screen", "0",
+                 f"{width}x{height}x{device.color_depth}", "-nolisten", "tcp"],
+                pass_fds=(write_fd,),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as e:
+            os.close(read_fd)
+            logger.warning(f"  Could not start Xvfb ({e}) — using the inherited display")
+            return None
+        finally:
+            os.close(write_fd)
+
+        def _read_display_number() -> str:
+            # Xvfb writes "<number>\n" once it accepts connections; EOF
+            # without a number means it exited.
+            data = b""
+            while not data.endswith(b"\n"):
+                chunk = os.read(read_fd, 64)
+                if not chunk:
+                    break
+                data += chunk
+            return data.decode(errors="replace").strip()
+
+        read_future = asyncio.get_running_loop().run_in_executor(None, _read_display_number)
+        try:
+            number = await asyncio.wait_for(asyncio.shield(read_future), timeout=timeout)
+        except asyncio.TimeoutError:
+            # Kill Xvfb so the blocked read sees EOF, and let it finish
+            # before closing its fd (never close an fd another thread is
+            # still reading).
+            process.kill()
+            await read_future
+            number = ""
+        os.close(read_fd)
+
+        if not number.isdigit():
+            process.kill()
+            process.wait()
+            logger.warning("  Xvfb did not start — using the inherited display")
+            return None
+
+        self._xvfb_process = process
+        logger.info(
+            f"  Virtual display :{number} at {width}x{height}x{device.color_depth} "
+            f"(screen {device.screen_width}x{device.screen_height} @ {device.device_pixel_ratio:g}x)"
+        )
+        return f":{number}"
+
+    # SwiftShader's Vulkan driver per platform, and the ICD manifest the
+    # build writes next to it (third_party/swiftshader/src/Vulkan/BUILD.gn
+    # "icd_file" + vk_swiftshader_icd.json.tmpl at the pinned revision).
+    _SWIFTSHADER_LIBS = {
+        "linux": "./libvk_swiftshader.so",
+        "darwin": "./libvk_swiftshader.dylib",
+        "win32": ".\\vk_swiftshader.dll",
+    }
+
+    def _ensure_swiftshader_icd(self):
+        """
+        Make sure vk_swiftshader_icd.json sits next to the browser binary.
+
+        With no usable GPU (servers, VMs, Xvfb), Chrome renders WebGL with
+        ANGLE on SwiftShader's software Vulkan driver, and ANGLE points the
+        Vulkan loader at <binary dir>/vk_swiftshader_icd.json to find it.
+        Without that manifest the loader finds no driver, reports no
+        VK_KHR_surface, the GPU process exits, and pages get no WebGL at
+        all -- a strong tell, since real Chrome always has it. Release
+        archives packaged before this fix copied libvk_swiftshader.so but
+        not the manifest, so write it here if it's missing.
+        """
+
+        platform_key = "linux" if sys.platform.startswith("linux") else sys.platform
+        library_path = self._SWIFTSHADER_LIBS.get(platform_key)
+        if not library_path:
+            return
+        bin_dir = Path(self.browser_path).parent
+        library = bin_dir / library_path.lstrip(".\\/")
+        manifest = bin_dir / "vk_swiftshader_icd.json"
+        if not library.exists() or manifest.exists():
+            return
+        content = json.dumps({
+            "file_format_version": "1.0.0",
+            "ICD": {"library_path": library_path, "api_version": "1.0.5"},
+        }, indent=2) + "\n"
+        try:
+            manifest.write_text(content)
+            logger.info(f"  Wrote missing SwiftShader ICD manifest: {manifest}")
+        except OSError as e:
+            logger.warning(
+                f"  {manifest} is missing and could not be written ({e}) — "
+                "WebGL will be unavailable on machines without a GPU"
+            )
 
     def _warn_if_locale_missing(self, ui_locale: str):
         """

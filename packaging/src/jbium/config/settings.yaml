@@ -8,6 +8,13 @@ browser:
   # build output dir and common install locations for the current OS).
   binary_path: ""
   headless: false
+  # Linux, headed only: run each session on its own Xvfb sized to the
+  # device profile's screen (and force its device pixel ratio), so
+  # screen.width/height/devicePixelRatio match the profile instead of the
+  # host display (e.g. Xvfb's 1280x1024 default). Needs the `xvfb`
+  # package; falls back to the inherited DISPLAY with a warning if absent.
+  # Set false to use the existing DISPLAY as-is.
+  virtual_display: true
   window_size: "--start-maximized"
   extra_args:
     - "--no-first-run"

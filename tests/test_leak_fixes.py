@@ -328,3 +328,102 @@ def test_live_expose_cdp_port_is_opt_in():
             await jb.close()
 
     asyncio.run(run())
+
+
+# ─────────────────────────────────────────────
+# Virtual display (Linux only: Xvfb + --force-device-scale-factor)
+# ─────────────────────────────────────────────
+
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="Xvfb / -displayfd are POSIX-only")
+
+
+@posix_only
+def test_virtual_display_reads_display_number(tmp_path, monkeypatch):
+    # A stand-in Xvfb that just reports display 42 on -displayfd, then
+    # sleeps like a real server — exercises the driver's own plumbing
+    # without needing Xvfb installed.
+    fake = tmp_path / "Xvfb"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys, time\n"
+        "fd = int(sys.argv[sys.argv.index('-displayfd') + 1])\n"
+        "assert '3456x2234x24' in sys.argv, sys.argv\n"
+        "os.write(fd, b'42\\n'); os.close(fd)\n"
+        "time.sleep(60)\n"
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    async def run():
+        jb = make_jbium()
+        device = make_device("macbook_pro")
+        device.screen_width, device.screen_height, device.device_pixel_ratio = 1728, 1117, 2.0
+        display = await jb._start_virtual_display(device)
+        try:
+            assert display == ":42"
+            assert jb._xvfb_process is not None and jb._xvfb_process.poll() is None
+        finally:
+            jb._xvfb_process.kill()
+            jb._xvfb_process.wait()
+
+    asyncio.run(run())
+
+
+@posix_only
+def test_virtual_display_missing_xvfb_falls_back(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert asyncio.run(make_jbium()._start_virtual_display(make_device())) is None
+
+
+@live
+@pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("Xvfb") is None,
+                    reason="needs Linux with Xvfb installed")
+def test_live_screen_matches_profile_on_virtual_display():
+    async def run():
+        jb = make_jbium(BROWSER)
+        device = make_device("macbook_pro")
+        device.screen_width, device.screen_height, device.device_pixel_ratio = 1728, 1117, 2.0
+        geo = make_geo("en-US", "US", "America/New_York")
+        env_vars = jb._generate_env_vars(device, geo, "direct://")
+        jb._session = StealthSession(proxy_url="direct://", proxy_ip="127.0.0.1",
+                                     geo_profile=geo, device_profile=device, env_vars=env_vars)
+        jb._browser_process = await jb._spawn_browser(
+            proxy_url="direct://", headless=False, env_vars=env_vars,
+            device_profile=device, geo_profile=geo,
+        )
+        xvfb = jb._xvfb_process
+        try:
+            await jb._wait_for_browser_ready(device)
+            page = await jb.new_page()
+            await page.goto("https://example.com/")
+            screen = json.loads(await page.evaluate(
+                "JSON.stringify({w: screen.width, h: screen.height, dpr: devicePixelRatio,"
+                " depth: screen.colorDepth, mq: matchMedia('(resolution: 2dppx)').matches})"
+            ))
+        finally:
+            await jb.close()
+        return screen, xvfb
+
+    screen, xvfb = asyncio.run(run())
+    assert screen == {"w": 1728, "h": 1117, "dpr": 2, "depth": 24, "mq": True}
+    assert xvfb is not None and xvfb.poll() is not None  # stopped by close()
+
+
+def test_swiftshader_icd_manifest_is_written_when_missing(tmp_path):
+    # Release archives shipped libvk_swiftshader.so without its ICD
+    # manifest, which left GPU-less machines with no WebGL at all.
+    platform_key = "linux" if sys.platform.startswith("linux") else sys.platform
+    library_path = Jbium._SWIFTSHADER_LIBS[platform_key]
+    (tmp_path / library_path.lstrip(".\\/")).write_bytes(b"")
+    jb = make_jbium(str(tmp_path / "jbium"))
+
+    jb._ensure_swiftshader_icd()
+    manifest = json.loads((tmp_path / "vk_swiftshader_icd.json").read_text())
+    # Byte-for-byte what the pinned SwiftShader BUILD.gn writes.
+    assert manifest == {"file_format_version": "1.0.0",
+                        "ICD": {"library_path": library_path, "api_version": "1.0.5"}}
+
+    # An existing manifest is left alone.
+    (tmp_path / "vk_swiftshader_icd.json").write_text("custom")
+    jb._ensure_swiftshader_icd()
+    assert (tmp_path / "vk_swiftshader_icd.json").read_text() == "custom"

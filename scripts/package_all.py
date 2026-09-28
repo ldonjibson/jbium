@@ -158,6 +158,14 @@ class PackageBuilder:
         # Copy libraries
         for lib in build_dir.glob(f"*{info['lib_ext']}"):
             shutil.copy2(lib, staging / lib.name)
+
+        # SwiftShader's Vulkan ICD manifest: without it the Vulkan loader
+        # never finds the SwiftShader driver copied above, and GPU-less
+        # machines get no WebGL at all. libvulkan.so.1 (Linux's loader)
+        # isn't matched by the *.so glob.
+        for extra in ("vk_swiftshader_icd.json", "libvulkan.so.1"):
+            if (build_dir / extra).exists():
+                shutil.copy2(build_dir / extra, staging / extra)
         
         # Copy locales
         locales_src = build_dir / "locales"

@@ -116,6 +116,8 @@ async () => {
     results.languages = navigator.languages;
     results.screenWidth = screen.width;
     results.screenHeight = screen.height;
+    results.colorDepth = screen.colorDepth;
+    results.devicePixelRatio = window.devicePixelRatio;
     results.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     results.intlLocale = Intl.DateTimeFormat().resolvedOptions().locale;
     results.maxTouchPoints = navigator.maxTouchPoints;
@@ -359,6 +361,8 @@ async def main(keep_open: bool) -> None:
             ("deviceMemory", device.ram_gb, checks["deviceMemory"]),
             ("screen width", device.screen_width, checks["screenWidth"]),
             ("screen height", device.screen_height, checks["screenHeight"]),
+            ("devicePixelRatio", device.device_pixel_ratio, checks["devicePixelRatio"]),
+            ("screen colorDepth", device.color_depth, checks["colorDepth"]),
             ("timezone", geo.timezone, checks["timezone"]),
             ("maxTouchPoints", 10 if device.touch_support else 0, checks["maxTouchPoints"]),
             ("WebGL vendor", device.gpu_vendor, checks["webglVendor"]),

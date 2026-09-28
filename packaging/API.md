@@ -224,7 +224,10 @@ has a code-level default if the key or the whole file is absent):
 browser:
   binary_path: ""        # explicit override; empty = auto-detect
   headless: false
-  extra_args: []          # extra Chrome CLI flags appended verbatim
+  virtual_display: true   # Linux + headed: per-session Xvfb sized to the profile's screen,
+                          # plus --force-device-scale-factor, so screen.* / devicePixelRatio
+                          # match the profile (needs the xvfb package; false = use $DISPLAY)
+  extra_args: []          # extra Chrome CLI flags appended verbatim (--remote-debugging-* are dropped)
 
 proxy:
   provider: webshare

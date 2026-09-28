@@ -156,6 +156,19 @@ for lib in "$BUILD_DIR"/*.so; do
     log "  Library: $libname ($(du -sh "$lib" | cut -f1))"
 done
 
+# Software GL fallback: SwiftShader's Vulkan ICD manifest (without it the
+# Vulkan loader never finds libvk_swiftshader.so and GPU-less machines get
+# no WebGL at all) and the Vulkan loader itself (not matched by *.so).
+for extra in vk_swiftshader_icd.json libvulkan.so.1; do
+    if [ -f "$BUILD_DIR/$extra" ]; then
+        cp "$BUILD_DIR/$extra" "$STAGING_DIR/chrome/"
+        MANIFEST_ITEMS+=("chrome/$extra")
+        log "  SwiftShader: $extra"
+    else
+        warn "  $extra not found in $BUILD_DIR — WebGL will be unavailable without a GPU"
+    fi
+done
+
 # ─────────────────────────────────────────────
 # Step 4: Copy resources (.pak files)
 # ─────────────────────────────────────────────
