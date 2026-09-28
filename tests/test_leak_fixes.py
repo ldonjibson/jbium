@@ -461,6 +461,10 @@ def _resolver_with(response):
     ("US", 34.05, -118.24, "America/Los_Angeles"),
     ("US", 41.88, -87.63, "America/Chicago"),
     ("US", 40.71, -74.01, "America/New_York"),
+    ("US", 25.80, -80.21, "America/New_York"),     # Miami: nearest ref is Kentucky/Monticello
+    ("US", 33.45, -112.07, "America/Phoenix"),     # Mountain, but no DST: must not become Denver
+    ("US", 61.22, -149.90, "America/Anchorage"),
+    ("BR", -1.46, -48.49, "America/Fortaleza"),    # Belem: what Windows' "SA Eastern" maps to
     ("AU", -33.87, 151.21, "Australia/Sydney"),
     ("BR", -23.55, -46.63, "America/Sao_Paulo"),
 ])

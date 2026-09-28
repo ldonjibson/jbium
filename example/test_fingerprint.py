@@ -40,7 +40,8 @@ you PASS/FAIL instead of "here's a picture, you decide":
      navigator.userAgentData (brands, fullVersionList, architecture,
      bitness, platformVersion) matches the User-Agent and the profile,
      and the Sec-CH-UA* headers a server actually receives say the same
-     thing (read back from https://httpbin.org/headers). Also checks
+     thing (the headers actually sent for the page load, read from
+     CDP Network.requestWillBeSentExtraInfo). Also checks
      that Widevine DRM is available: real Google Chrome always ships it,
      a plain Chromium build usually doesn't (Clear Key is probed as a
      control, to tell "Widevine missing" from "EME unavailable").
@@ -191,19 +192,34 @@ async () => {
 }
 """
 
-# Headers exactly as a server receives them (httpbin echoes them back
-# with CORS enabled). A cross-origin fetch from a secure page carries the
-# default low-entropy client hints: Sec-CH-UA, -Mobile, -Platform.
-SERVER_HEADERS_JS = """
-async () => {
-    try {
-        const r = await fetch('https://httpbin.org/headers', { signal: AbortSignal.timeout(10000) });
-        return (await r.json()).headers;
-    } catch (e) {
-        return { error: `${e.name}: ${e.message}` };
-    }
-}
-"""
+class SentHeaderRecorder:
+    """
+    Records the request headers the browser actually put on the wire for
+    the top-level page load (CDP Network.requestWillBeSentExtraInfo: the
+    final headers, including Sec-CH-UA*, after every override). No
+    third-party echo service involved, so nothing external can make this
+    check flaky. Register before goto() so the navigation is captured.
+    """
+
+    def __init__(self, page, url: str):
+        self._url = url
+        self._document_ids = set()
+        self._headers_by_id = {}
+        page.on("Network.requestWillBeSent", self._on_request)
+        page.on("Network.requestWillBeSentExtraInfo", self._on_extra_info)
+
+    def _on_request(self, params):
+        if params.get("type") == "Document" and params.get("request", {}).get("url", "").startswith(self._url):
+            self._document_ids.add(params["requestId"])
+
+    def _on_extra_info(self, params):
+        self._headers_by_id[params["requestId"]] = params.get("headers", {})
+
+    def document_headers(self):
+        for request_id in self._document_ids:
+            if request_id in self._headers_by_id:
+                return {k.lower(): v for k, v in self._headers_by_id[request_id].items()}
+        return None
 
 
 async def ip_location_via_proxy(proxy_url: str) -> dict:
@@ -226,10 +242,15 @@ async def ip_location_via_proxy(proxy_url: str) -> dict:
         return {"status": "fail", "message": f"{type(e).__name__}: {e}"}
 
 
-def _utc_offset(zone: str):
+def _clock(zone: str):
+    """UTC offsets in January and July -- two zone names with equal
+    tuples show the same clock all year (e.g. Chrome reports India as the
+    legacy ICU name Asia/Calcutta while ip-api says Asia/Kolkata)."""
     try:
         from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo(zone)).utcoffset()
+        year = datetime.now().year
+        return tuple(datetime(year, month, 15, 12, tzinfo=ZoneInfo(zone)).utcoffset()
+                     for month in (1, 7))
     except Exception:
         return None
 
@@ -267,6 +288,7 @@ async def main(keep_open: bool) -> None:
         )
 
         page = await browser.new_page()
+        sent = SentHeaderRecorder(page, CREEPJS_URL)
         print(f"Navigating to {CREEPJS_URL} ...")
         await page.goto(CREEPJS_URL)
 
@@ -364,9 +386,9 @@ async def main(keep_open: bool) -> None:
             if not _report(label, ok, detail):
                 failures += 1
 
-        server_headers = {k.lower(): v for k, v in (await page.evaluate(_call(SERVER_HEADERS_JS))).items()}
-        if "error" in server_headers:
-            print(f"  [WARN] Could not read headers back from httpbin: {server_headers['error']}")
+        server_headers = sent.document_headers()
+        if server_headers is None:
+            print("  [WARN] Could not capture the page-load request headers")
             warnings += 1
         else:
             major = claimed_version.split(".")[0]
@@ -390,11 +412,10 @@ async def main(keep_open: bool) -> None:
         else:
             ip_country, ip_zone = where["countryCode"], where["timezone"]
             country_geo = browser.geoip_resolver._country_geo.get(ip_country, {})
-            country_zones = {z[0] for z in country_geo.get("timezones", [])}
             observed_zone = checks["timezone"]
-            same_offset = (_utc_offset(observed_zone) is not None
-                           and _utc_offset(observed_zone) == _utc_offset(ip_zone))
-            zone_ok = observed_zone == ip_zone or (observed_zone in country_zones and same_offset)
+            zone_ok = observed_zone == ip_zone or (
+                _clock(observed_zone) is not None and _clock(observed_zone) == _clock(ip_zone)
+            )
             if not _report(f"Browser timezone matches the IP ({where['query']}, {ip_country})",
                             zone_ok,
                             f"browser={observed_zone!r} ip={ip_zone!r}"):

@@ -209,17 +209,28 @@ class GeoIPResolver:
         if not zones:
             return None
         if latitude is None or longitude is None or len(zones) == 1:
-            return zones[0][0]
+            return self._canonical_zone(zones[0])
 
         def distance(zone):
-            _, zlat, zlon = zone
+            _, zlat, zlon = zone[:3]
             # Equirectangular approximation — plenty to pick the nearest
             # zone reference city within one country.
             x = math.radians(zlon - longitude) * math.cos(math.radians((zlat + latitude) / 2))
             y = math.radians(zlat - latitude)
             return x * x + y * y
 
-        return min(zones, key=distance)[0]
+        return self._canonical_zone(min(zones, key=distance))
+
+    @staticmethod
+    def _canonical_zone(entry) -> str:
+        """
+        The name a real browser reports for that zone: entry[3] is the
+        first zone of its CLDR windowsZones mapping for the country (what
+        Chrome on Windows gets from the OS), e.g. the nearest reference
+        city to Miami is America/Kentucky/Monticello, but a Miami machine
+        reports America/New_York.
+        """
+        return entry[3] if len(entry) > 3 else entry[0]
 
     async def resolve(self, ip: str) -> GeoProfile:
         """
