@@ -62,6 +62,7 @@ Usage:
 import argparse
 import asyncio
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Works two ways: from inside a full repo checkout (driver.stealth_browser,
@@ -203,6 +204,34 @@ async () => {
     }
 }
 """
+
+
+async def ip_location_via_proxy(proxy_url: str) -> dict:
+    """
+    Where the proxy's exit IP really is, according to an independent
+    source (ip-api.com, fetched through the same proxy), rather than the
+    driver's own GeoIP lookup -- so a wrong timezone/language in the
+    driver can't also "pass" by being compared against itself.
+    """
+    import aiohttp
+
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.get(
+                "http://ip-api.com/json/?fields=status,message,query,countryCode,timezone",
+                proxy=proxy_url, timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                return await response.json(content_type=None)
+    except Exception as e:
+        return {"status": "fail", "message": f"{type(e).__name__}: {e}"}
+
+
+def _utc_offset(zone: str):
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo(zone)).utcoffset()
+    except Exception:
+        return None
 
 
 def _call(fn_js: str) -> str:
@@ -352,6 +381,30 @@ async def main(keep_open: bool) -> None:
                 got = server_headers.get(header)
                 if not _report(label, got is not None and ok_fn(got), f"got {got!r}"):
                     failures += 1
+
+        print("\n--- Timezone / language vs. where the IP really is (ip-api.com) ---")
+        where = await ip_location_via_proxy(proxy_url)
+        if where.get("status") != "success":
+            print(f"  [WARN] Could not look up the exit IP independently: {where.get('message')}")
+            warnings += 1
+        else:
+            ip_country, ip_zone = where["countryCode"], where["timezone"]
+            country_geo = browser.geoip_resolver._country_geo.get(ip_country, {})
+            country_zones = {z[0] for z in country_geo.get("timezones", [])}
+            observed_zone = checks["timezone"]
+            same_offset = (_utc_offset(observed_zone) is not None
+                           and _utc_offset(observed_zone) == _utc_offset(ip_zone))
+            zone_ok = observed_zone == ip_zone or (observed_zone in country_zones and same_offset)
+            if not _report(f"Browser timezone matches the IP ({where['query']}, {ip_country})",
+                            zone_ok,
+                            f"browser={observed_zone!r} ip={ip_zone!r}"):
+                failures += 1
+            expected_lang = (country_geo.get("language") or "en").split("-")[0]
+            browser_lang = (checks["language"] or "").split("-")[0]
+            if not _report(f"Browser language fits the IP's country ({ip_country})",
+                            browser_lang == expected_lang,
+                            f"navigator.language={checks['language']!r}, expected {expected_lang}-*"):
+                failures += 1
 
         print("\n--- STEALTH_* fingerprint consistency (intended vs. observed) ---")
         geo = session.geo_profile

@@ -427,3 +427,77 @@ def test_swiftshader_icd_manifest_is_written_when_missing(tmp_path):
     (tmp_path / "vk_swiftshader_icd.json").write_text("custom")
     jb._ensure_swiftshader_icd()
     assert (tmp_path / "vk_swiftshader_icd.json").read_text() == "custom"
+
+
+# ─────────────────────────────────────────────
+# GeoIP: timezone + language must follow the IP's actual location
+# ─────────────────────────────────────────────
+
+from types import SimpleNamespace  # noqa: E402
+
+from driver.geoip_resolver import GeoIPResolver  # noqa: E402
+
+
+def _fake_city_response(country, lat, lon, time_zone=None, city="X"):
+    """The subset of a geoip2 City response GeoIPResolver reads."""
+    return SimpleNamespace(
+        country=SimpleNamespace(iso_code=country, name=country),
+        city=SimpleNamespace(name=city),
+        location=SimpleNamespace(latitude=lat, longitude=lon, time_zone=time_zone),
+        subdivisions=SimpleNamespace(most_specific=SimpleNamespace(name="R")),
+        traits=SimpleNamespace(organization=None),
+    )
+
+
+def _resolver_with(response):
+    resolver = GeoIPResolver(db_path="does-not-exist.mmdb", asn_db_path="does-not-exist.mmdb")
+    resolver._reader = SimpleNamespace(city=lambda ip: response)
+    return resolver
+
+
+@pytest.mark.parametrize("country,lat,lon,expected", [
+    ("HR", 45.81, 15.98, "Europe/Zagreb"),         # Zagreb
+    ("RO", 45.14, 24.68, "Europe/Bucharest"),      # Curtea de Arges
+    ("US", 34.05, -118.24, "America/Los_Angeles"),
+    ("US", 41.88, -87.63, "America/Chicago"),
+    ("US", 40.71, -74.01, "America/New_York"),
+    ("AU", -33.87, 151.21, "Australia/Sydney"),
+    ("BR", -23.55, -46.63, "America/Sao_Paulo"),
+])
+def test_timezone_follows_ip_location_without_db_timezone(country, lat, lon, expected):
+    # The free DB-IP database has coordinates but no time_zone: the zone
+    # must still be the one the IP is in, never UTC or a random city's.
+    geo = _resolver_with(_fake_city_response(country, lat, lon))._resolve_local("203.0.113.9")
+    assert geo.timezone == expected
+    assert (geo.latitude, geo.longitude) == (lat, lon)
+
+
+def test_database_timezone_and_city_win_over_locales_json_cities():
+    # US is in locales.json with a city list; the IP's own city/zone must
+    # be used, not a randomly picked one from that list.
+    response = _fake_city_response("US", 47.61, -122.33, time_zone="America/Los_Angeles", city="Seattle")
+    for _ in range(20):
+        geo = _resolver_with(response)._resolve_local("203.0.113.9")
+        assert (geo.city, geo.timezone) == ("Seattle", "America/Los_Angeles")
+
+
+@pytest.mark.parametrize("country,language,accept", [
+    ("HR", "hr-HR", ["hr-HR", "hr", "en-US", "en"]),
+    ("RO", "ro-RO", ["ro-RO", "ro", "en-US", "en"]),
+    ("NL", "nl-NL", ["nl-NL", "nl", "en-US", "en"]),
+    ("IN", "en-IN", ["en-GB", "en-US", "en"]),
+    ("CA", "en-CA", ["en-GB", "en-US", "en"]),
+    ("US", "en-US", ["en-US", "en"]),
+    ("DE", "de-DE", ["de-DE", "de", "en-US", "en"]),  # locales.json country
+])
+def test_language_follows_ip_country(country, language, accept):
+    geo = _resolver_with(_fake_city_response(country, 0.0, 0.0))._resolve_local("203.0.113.9")
+    assert geo.language == language
+    assert Jbium._accept_languages(geo) == accept
+
+
+def test_country_geo_covers_every_tzdata_country():
+    data = json.loads((REPO / "config" / "country_geo.json").read_text(encoding="utf-8"))["countries"]
+    assert len(data) >= 240
+    for cc, entry in data.items():
+        assert entry["timezones"] and "-" in entry["language"], cc

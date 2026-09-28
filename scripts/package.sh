@@ -206,15 +206,14 @@ ok "Resources copied"
 
 log "Step 5: Copying locales..."
 
-# Supported locales (matches config/locales.json)
-SUPPORTED_LOCALES=("en-US" "en-GB" "ja" "de" "fr" "es" "pt-BR" "ko" "zh-CN" "it" "ru")
-
-for locale in "${SUPPORTED_LOCALES[@]}"; do
-    locale_file="$BUILD_DIR/locales/${locale}.pak"
-    if [ -f "$locale_file" ]; then
-        cp "$locale_file" "$STAGING_DIR/locales/"
-        MANIFEST_ITEMS+=("locales/${locale}.pak")
-    fi
+# Every locale the build produced: the driver sets the UI locale to the
+# proxy country's language (hr, ro, nl, ...), and a missing .pak makes
+# Chrome fall back to en-US, so Intl's locale would contradict
+# navigator.languages.
+for locale_file in "$BUILD_DIR"/locales/*.pak; do
+    [ -f "$locale_file" ] || continue
+    cp "$locale_file" "$STAGING_DIR/locales/"
+    MANIFEST_ITEMS+=("locales/$(basename "$locale_file")")
 done
 
 LOCALE_COUNT=$(ls "$STAGING_DIR/locales/" | wc -l)

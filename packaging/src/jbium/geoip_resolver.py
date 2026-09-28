@@ -8,13 +8,13 @@ Handles edge cases: VPNs, hosting providers, mobile carriers.
 Provides fallback for unresolvable IPs.
 """
 
-import asyncio
 import logging
+import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 import json
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # Resolved relative to this file, not the caller's CWD — a pip-installed
 # package can be imported from any working directory.
 _PACKAGE_DIR = Path(__file__).parent
+CONFIG_DIR = _PACKAGE_DIR / "config"
 
 try:
     import geoip2.database
@@ -130,6 +131,7 @@ class GeoIPResolver:
         self._reader = None
         self._asn_reader = None
         self._locale_data = self._load_locale_data()
+        self._country_geo = self._load_country_geo()
 
         if HAS_GEOIP2 and self.db_path.exists():
             self._reader = geoip2.database.Reader(str(self.db_path))
@@ -158,7 +160,7 @@ class GeoIPResolver:
         locale_file = _PACKAGE_DIR / "config" / "locales.json"
         
         if locale_file.exists():
-            with open(locale_file) as f:
+            with open(locale_file, encoding="utf-8") as f:
                 return json.load(f)
         
         # Minimal fallback
@@ -183,6 +185,50 @@ class GeoIPResolver:
             }
         }
     
+    def _load_country_geo(self) -> dict:
+        """
+        Per-country language + IANA timezones (config/country_geo.json,
+        generated from tzdata zone.tab and CLDR likelySubtags) for every
+        country, including the many that locales.json doesn't cover.
+        """
+
+        path = CONFIG_DIR / "country_geo.json"
+        if path.exists():
+            with open(path, encoding="utf-8") as f:
+                return json.load(f).get("countries", {})
+        logger.warning(f"{path} not found — non-listed countries fall back to UTC / en-US")
+        return {}
+
+    def _country_language(self, country_code: str) -> Optional[str]:
+        """Most likely browser language for a country, e.g. HR -> hr-HR."""
+
+        return self._country_geo.get(country_code, {}).get("language")
+
+    def _country_timezone(self, country_code: str, latitude: Optional[float],
+                          longitude: Optional[float]) -> Optional[str]:
+        """
+        The country's IANA timezone nearest the given coordinates (e.g. a
+        Zagreb IP -> Europe/Zagreb, a Los Angeles IP -> America/Los_Angeles).
+        Used when the GeoIP database carries no time_zone for the IP, so a
+        browser's clock never contradicts the country its IP is in.
+        """
+
+        zones = self._country_geo.get(country_code, {}).get("timezones", [])
+        if not zones:
+            return None
+        if latitude is None or longitude is None or len(zones) == 1:
+            return zones[0][0]
+
+        def distance(zone):
+            _, zlat, zlon = zone
+            # Equirectangular approximation — plenty to pick the nearest
+            # zone reference city within one country.
+            x = math.radians(zlon - longitude) * math.cos(math.radians((zlat + latitude) / 2))
+            y = math.radians(zlat - latitude)
+            return x * x + y * y
+
+        return min(zones, key=distance)[0]
+
     async def resolve(self, ip: str) -> GeoProfile:
         """
         Resolve IP to GeoProfile.
@@ -252,11 +298,12 @@ class GeoIPResolver:
         ).get(country_code, {})
 
         if not locale_info:
-            # Use generic English data
+            # Not in locales.json: the country's own language (CLDR), not
+            # a blanket en-US — a Croatian IP with an en-US-only browser is
+            # itself unusual.
             locale_info = {
                 "name": response.country.name or "Unknown",
-                "primary_language": "en-US",
-                "timezone": response.location.time_zone or "UTC",
+                "primary_language": self._country_language(country_code) or "en-US",
                 "currency": "USD",
                 "date_format": "MM/DD/YYYY",
                 "os_distribution": {"Windows": 0.70, "macOS": 0.20, "Linux": 0.05},
@@ -264,23 +311,35 @@ class GeoIPResolver:
 
         # Classify IP type
         ip_type = self._classify_ip(asn_org)
-        
-        # Get geolocation from locale data if available
+
+        # Location and timezone come from the IP itself whenever the
+        # database has them. The timezone must match where the IP is:
+        # anti-bot checks compare the browser clock with the IP's region,
+        # so e.g. a Los Angeles IP with America/New_York is a tell.
+        #  1. database time_zone (MaxMind GeoLite2 has it);
+        #  2. otherwise the country's IANA zone nearest the IP's
+        #     coordinates (the free DB-IP database has no time_zone);
+        #  3. only with no coordinates at all, a locales.json city.
+        latitude = response.location.latitude
+        longitude = response.location.longitude
+        city = response.city.name or "Unknown"
+        timezone = response.location.time_zone or self._country_timezone(
+            country_code, latitude, longitude
+        )
         geo_cities = locale_info.get("geolocation", {}).get("cities", [])
-        if geo_cities:
-            # Pick a city from the list (weighted by population)
+        if (latitude is None or longitude is None) and geo_cities:
             import random
             city_data = random.choice(geo_cities)
             city = city_data["name"]
             latitude = city_data["lat"]
             longitude = city_data["lng"]
-            timezone = city_data.get("tz", locale_info.get("timezone", "UTC"))
-        else:
-            city = response.city.name or "Unknown"
-            latitude = response.location.latitude or 0.0
-            longitude = response.location.longitude or 0.0
-            timezone = response.location.time_zone or locale_info.get("timezone", "UTC")
-        
+            timezone = timezone or city_data.get("tz")
+        timezone = timezone or locale_info.get("timezone") or "UTC"
+        latitude = latitude if latitude is not None else 0.0
+        longitude = longitude if longitude is not None else 0.0
+        if timezone == "UTC":
+            logger.warning(f"  No timezone for {ip} ({country_code}) — using UTC, which may not match the IP")
+
         return GeoProfile(
             country_code=country_code,
             country_name=locale_info.get("name", response.country.name),
@@ -337,9 +396,11 @@ class GeoIPResolver:
             region=data.get("region", "Unknown"),
             latitude=float(lat),
             longitude=float(lng),
-            timezone=data.get("timezone", "UTC"),
-            language=locale_info.get("primary_language", "en-US"),
-            locale=locale_info.get("primary_language", "en-US"),
+            timezone=(data.get("timezone")
+                      or self._country_timezone(country_code, float(lat), float(lng))
+                      or "UTC"),
+            language=locale_info.get("primary_language") or self._country_language(country_code) or "en-US",
+            locale=locale_info.get("primary_language") or self._country_language(country_code) or "en-US",
             currency=locale_info.get("currency", "USD"),
             date_format=locale_info.get("date_format", "MM/DD/YYYY"),
             ip_type=IPType.UNKNOWN,

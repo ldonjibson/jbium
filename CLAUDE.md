@@ -183,6 +183,18 @@ failure, prefer `tee` + full log over any truncating pipe.
   `Emulation.setUserAgentOverride` with full `userAgentMetadata`. Don't
   drop that call. Pages opened by anything else need
   `Jbium.client_hints_override()`.
+- GeoIP → timezone/language must follow the IP's *actual* location.
+  The free DB-IP database has coordinates but no `time_zone`, and
+  `locales.json` only covers 6 countries. The resolver therefore takes the
+  IANA zone nearest the IP from `config/country_geo.json` (generated from
+  tzdata `zone.tab` + CLDR likelySubtags) and the country's language
+  from the same file. It must never pick a random `locales.json` city
+  when the database has real coordinates. `test_fingerprint.py` checks
+  both against ip-api.com, looked up through the same proxy.
+- Release archives must ship `vk_swiftshader_icd.json` next to
+  `libvk_swiftshader.so`, and every `locales/*.pak`. Without the ICD
+  manifest, GPU-less machines get no WebGL. The driver writes the
+  manifest if it's missing.
 - The Linux binary is genuinely Linux-only (ELF, glibc/GTK/X11-linked)
   — WSL2 can run it unmodified today; native Windows/macOS need their
   own builds via `build_windows.bat`/`build_macos.sh`, neither of
