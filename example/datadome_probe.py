@@ -44,6 +44,12 @@ except ModuleNotFoundError:
 
 OUT_DIR = Path(__file__).parent
 
+# What genuine Chrome 120 presents (JA4 is stable across connections; the
+# HTTP/2 value is Chrome's SETTINGS/WINDOW_UPDATE/PRIORITY/pseudo-header
+# order without any GREASE setting).
+CHROME_120_JA4 = "t13d1516h2_8daaf6152771_02713d6af862"
+CHROME_HTTP2_AKAMAI = "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p"
+
 DD_OBJECT = re.compile(r"var\s+dd\s*=\s*\{(.*?)\}", re.S)
 DD_PAIR = re.compile(r"""['"](\w+)['"]\s*:\s*(?:['"]([^'"]*)['"]|([-\d.]+))""")
 
@@ -114,10 +120,11 @@ async def connection_fingerprint(page):
     tls, http2 = data.get("tls", {}), data.get("http2", {})
     print("\n=== Connection fingerprint (tls.peet.ws)")
     print(f"  http_version: {data.get('http_version')}")
-    print(f"  ja4:          {tls.get('ja4')}")
+    ja4, akamai = tls.get("ja4"), http2.get("akamai_fingerprint")
+    print(f"  ja4:          {ja4}  [{'matches' if ja4 == CHROME_120_JA4 else 'DIFFERS from'} Chrome 120]")
     print(f"  ja3_hash:     {tls.get('ja3_hash')}  (varies per connection in Chrome: extension order is randomized)")
     print(f"  peetprint:    {tls.get('peetprint_hash')}")
-    print(f"  http2 akamai: {http2.get('akamai_fingerprint')}")
+    print(f"  http2 akamai: {akamai}  [{'matches' if akamai == CHROME_HTTP2_AKAMAI else 'DIFFERS from'} Chrome]")
     print(f"  user-agent seen: {data.get('user_agent')}")
 
 

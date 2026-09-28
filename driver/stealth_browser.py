@@ -945,6 +945,18 @@ class Jbium:
         # is no local HTTP/WebSocket endpoint a page could probe (see
         # driver/cdp_pipe.py).
         args.append("--remote-debugging-pipe")
+
+        # No field-trial testing config. Non-Chrome-branded builds apply
+        # testing/variations/fieldtrial_testing_config.json (917 studies in
+        # the pinned tree) by default, even with is_official_build=true
+        # (components/variations/BUILD.gn fieldtrial_testing_enabled). Real
+        # Chrome gets only its server-assigned slice of experiments, so
+        # "every experiment on at once" is itself a fingerprint -- visibly on
+        # the wire, where the HTTP2 study adds a GREASE SETTINGS entry
+        # (e.g. 64026:...) that stable Chrome doesn't send on its first
+        # connection. Builds with disable_fieldtrial_testing_config=true
+        # (config/args_*.gn) don't need this; it's harmless there.
+        args.append("--disable-field-trial-config")
         if expose_cdp_port:
             # Explicit opt-in only (launch() docstring). Port 0 lets the
             # browser pick a free port and record it in

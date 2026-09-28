@@ -5,6 +5,11 @@
 
 is_debug = false
 is_official_build = true
+# Don't bake Chromium's field-trial *testing* config (hundreds of
+# experiments at once) into the binary: non-Chrome-branded builds apply it
+# by default even when official, and it changes the fingerprint (e.g. an
+# extra GREASE entry in the HTTP/2 SETTINGS frame real Chrome doesn't send).
+disable_fieldtrial_testing_config = true
 is_component_build = false
 target_cpu = "x64"       # or "arm64"
 target_os = "linux"

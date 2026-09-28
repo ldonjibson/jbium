@@ -191,6 +191,15 @@ failure, prefer `tee` + full log over any truncating pipe.
   from the same file. It must never pick a random `locales.json` city
   when the database has real coordinates. `test_fingerprint.py` checks
   both against ip-api.com, looked up through the same proxy.
+- Non-Chrome-branded builds apply Chromium's field-trial *testing* config
+  (`testing/variations/fieldtrial_testing_config.json`, 917 studies at
+  120) by default, **even with `is_official_build = true`**. That turns on
+  every experiment at once, which is visible on the wire: the HTTP2 study
+  adds a GREASE SETTINGS entry (`64026:...`) that stable Chrome doesn't
+  send, verified live via tls.peet.ws. The fix is
+  `disable_fieldtrial_testing_config = true` in `args_*.gn` and
+  `setup.sh`, and the driver passes `--disable-field-trial-config` for
+  binaries built before that. Keep both.
 - Release archives must ship `vk_swiftshader_icd.json` next to
   `libvk_swiftshader.so`, and every `locales/*.pak`. Without the ICD
   manifest, GPU-less machines get no WebGL. The driver writes the
