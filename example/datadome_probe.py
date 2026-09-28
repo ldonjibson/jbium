@@ -184,6 +184,22 @@ async def main(listing: str, home: str):
         geo = session.geo_profile
         print(f"  driver profile: {geo.country_code} {geo.city} tz={geo.timezone} lang={geo.language} "
               f"ip_type={getattr(geo.ip_type, 'value', geo.ip_type)} asn={geo.asn} isp={geo.isp}")
+        # The driver resolves its own exit IP on a separate connection. If
+        # it differs from ip-api's, the proxy is handing out different exits
+        # per connection, and the profile (timezone/language) was built for
+        # an IP the browser may not actually use. If it's the SAME IP but the
+        # locations differ, the GeoIP databases disagree about it.
+        if where.get("query"):
+            if session.proxy_ip != where["query"]:
+                print(f"  WARNING: exit IP differs between connections: driver saw {session.proxy_ip}, "
+                      f"ip-api saw {where['query']} -- the proxy rotates per connection, so the "
+                      "profile may not match the IP the browser actually uses.")
+            elif geo.timezone != where.get("timezone"):
+                print(f"  WARNING: same exit IP {session.proxy_ip}, but the driver's GeoIP database says "
+                      f"{geo.city} ({geo.timezone}) and ip-api says {where.get('city')} "
+                      f"({where.get('timezone')}) -- the databases disagree about this IP.")
+            else:
+                print(f"  exit IP {session.proxy_ip} and timezone agree between driver and ip-api")
 
         page = await browser.new_page()
         await connection_fingerprint(page)
