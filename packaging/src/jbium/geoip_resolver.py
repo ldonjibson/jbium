@@ -457,11 +457,17 @@ class GeoIPResolver:
 
         org = (asn_org or "").lower()
         
-        # Known hosting providers
+        # Known hosting providers, plus generic words hosting companies put
+        # in their network names -- proxy exits seen live on Webshare were
+        # B2 Net Solutions, Colocation America, HZ Hosting, EGIHosting,
+        # Maxihost / Latitude.sh, Leaseweb: all datacenter.
         hosting = [
             "amazon", "aws", "google", "microsoft", "azure",
             "digitalocean", "linode", "vultr", "ovh", "hetzner",
             "contabo", "choopa", "leaseweb", "softlayer",
+            "host", "colocation", "datacenter", "data center",
+            "server", "cloud", "vps", "dedicated", "maxihost", "latitude.sh",
+            "egihosting", "b2 net", "m247", "psychz", "quadranet", "cogent",
         ]
         
         # Known VPN providers

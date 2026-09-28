@@ -26,6 +26,9 @@ datadome cookie was set, and saves the HTML next to this script.
 Usage:
     export STEALTH_WEBSHARE_USERNAME=... STEALTH_WEBSHARE_PASSWORD=...
     python example/datadome_probe.py --listing https://www.vrbo.com/1603735?dateless=true
+
+    # any other proxy (e.g. a residential one):
+    python example/datadome_probe.py --listing ... --proxy http://user:pass@host:port
 """
 
 import argparse
@@ -48,6 +51,11 @@ OUT_DIR = Path(__file__).parent
 # HTTP/2 value is Chrome's SETTINGS/WINDOW_UPDATE/PRIORITY/pseudo-header
 # order without any GREASE setting).
 CHROME_120_JA4 = "t13d1516h2_8daaf6152771_02713d6af862"
+# The same hello plus BoringSSL's `padding` extension (21), which Chrome adds
+# whenever the ClientHello would land in a certain size range -- the random-
+# length ECH GREASE payload makes that vary per connection, so genuine
+# Chrome 120 shows both values.
+CHROME_120_JA4_PADDED = "t13d1517h2_8daaf6152771_b1ff8ab2d16f"
 CHROME_HTTP2_AKAMAI = "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p"
 
 DD_OBJECT = re.compile(r"var\s+dd\s*=\s*\{(.*?)\}", re.S)
@@ -121,7 +129,10 @@ async def connection_fingerprint(page):
     print("\n=== Connection fingerprint (tls.peet.ws)")
     print(f"  http_version: {data.get('http_version')}")
     ja4, akamai = tls.get("ja4"), http2.get("akamai_fingerprint")
-    print(f"  ja4:          {ja4}  [{'matches' if ja4 == CHROME_120_JA4 else 'DIFFERS from'} Chrome 120]")
+    ja4_verdict = ("matches Chrome 120" if ja4 == CHROME_120_JA4
+                   else "matches Chrome 120 (with padding)" if ja4 == CHROME_120_JA4_PADDED
+                   else "DIFFERS from Chrome 120")
+    print(f"  ja4:          {ja4}  [{ja4_verdict}]")
     print(f"  ja3_hash:     {tls.get('ja3_hash')}  (varies per connection in Chrome: extension order is randomized)")
     print(f"  peetprint:    {tls.get('peetprint_hash')}")
     print(f"  http2 akamai: {akamai}  [{'matches' if akamai == CHROME_HTTP2_AKAMAI else 'DIFFERS from'} Chrome]")
@@ -172,8 +183,8 @@ async def visit(page, url: str, label: str):
     print(f"  html saved: {out}")
 
 
-async def main(listing: str, home: str):
-    proxy_url = get_random_webshare_proxy()
+async def main(listing: str, home: str, proxy_url: str = None):
+    proxy_url = proxy_url or get_random_webshare_proxy()
 
     where = await ip_location_via_proxy(proxy_url)
     print("=== Exit IP (ip-api.com, via the proxy)")
@@ -224,8 +235,12 @@ if __name__ == "__main__":
     import logging
 
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(message)s")
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description="Show why DataDome blocks a page: exit IP, TLS/HTTP2 fingerprint, and DataDome's verdict.")
     parser.add_argument("--listing", required=True, help="A listing URL the scraper got blocked on")
     parser.add_argument("--home", default="https://www.vrbo.com", help="Page visited first (default: VRBO homepage)")
+    parser.add_argument("--proxy", default=None,
+                        help="Proxy URL to test, e.g. http://user:pass@host:port "
+                             "(default: a random Webshare proxy from STEALTH_WEBSHARE_*)")
     args = parser.parse_args()
-    asyncio.run(main(args.listing, args.home))
+    asyncio.run(main(args.listing, args.home, args.proxy))
