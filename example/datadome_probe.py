@@ -45,7 +45,7 @@ except ModuleNotFoundError:
 OUT_DIR = Path(__file__).parent
 
 DD_OBJECT = re.compile(r"var\s+dd\s*=\s*\{(.*?)\}", re.S)
-DD_PAIR = re.compile(r"'(\w+)'\s*:\s*(?:'([^']*)'|([-\d.]+))")
+DD_PAIR = re.compile(r"""['"](\w+)['"]\s*:\s*(?:['"]([^'"]*)['"]|([-\d.]+))""")
 
 
 def parse_dd(html: str):
@@ -54,6 +54,22 @@ def parse_dd(html: str):
         return None
     return {key: (text if text or not number else number)
             for key, text, number in DD_PAIR.findall(match.group(1))}
+
+
+def verdict_from_url(url: str):
+    """
+    DataDome often serves the challenge as a document from
+    geo.captcha-delivery.com (loaded in a frame), with the verdict in the
+    query string: /captcha/?...&t=fe  or  /interstitial/?...
+    """
+    from urllib.parse import parse_qs, urlsplit
+
+    parts = urlsplit(url or "")
+    if "captcha-delivery.com" not in parts.netloc:
+        return None
+    query = parse_qs(parts.query)
+    kind = "c" if "/captcha" in parts.path else "i" if "/interstitial" in parts.path else None
+    return {"t": (query.get("t") or [None])[0], "rt": kind, "source": "captcha-delivery URL"}
 
 
 def explain(dd):
@@ -97,6 +113,9 @@ async def visit(page, url: str, label: str):
     detection = await page.check_detection()
     cookies = (await page._command("Network.getCookies", {"urls": [url]})).get("cookies", [])
     dd = parse_dd(html)
+    if dd is None:
+        for doc_url, _, _ in documents:
+            dd = verdict_from_url(doc_url) or dd
 
     print(f"\n=== {label}: {url}")
     for doc_url, status, headers in documents:
@@ -121,6 +140,12 @@ async def main(listing: str, home: str):
     where = await ip_location_via_proxy(proxy_url)
     print("=== Exit IP (ip-api.com, via the proxy)")
     print(f"  {json.dumps(where)}")
+    if where.get("hosting") or where.get("proxy"):
+        print("  WARNING: ip-api flags this exit as "
+              f"{'hosting/datacenter' if where.get('hosting') else ''}"
+              f"{' + ' if where.get('hosting') and where.get('proxy') else ''}"
+              f"{'proxy' if where.get('proxy') else ''} -- DataDome weighs IP reputation "
+              "before any browser signal, so blocks on such IPs say little about the browser.")
 
     async with Jbium() as browser:
         session = await browser.launch(proxy_url=proxy_url, headless=False)
