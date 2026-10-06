@@ -11,10 +11,15 @@
         "NotoSans-Medium.ttf",
         "NotoSans-Light.ttf"
       ],
-      "substitutes_for": ["SF Pro Text", "SF Pro Display", "Helvetica Neue"],
+      "substitutes_for": [
+        "SF Pro Text",
+        "SF Pro Display",
+        "Helvetica Neue"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
-      "rendering_note": "Closest available to SF Pro. Similar humanist sans-serif proportions."
+      "rendering_note": "Closest available to SF Pro. Similar humanist sans-serif proportions.",
+      "family": "Noto Sans"
     },
     "liberation_sans": {
       "files": [
@@ -22,53 +27,100 @@
         "LiberationSans-Bold.ttf",
         "LiberationSans-Italic.ttf"
       ],
-      "substitutes_for": ["Helvetica", "Helvetica Neue"],
+      "substitutes_for": [
+        "Helvetica",
+        "Helvetica Neue"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
-      "rendering_note": "Helvetica and Arial share metrics; Liberation Sans matches both"
+      "rendering_note": "Helvetica and Arial share metrics; Liberation Sans matches both",
+      "family": "Liberation Sans"
     },
     "noto_serif": {
-      "files": ["NotoSerif-Regular.ttf", "NotoSerif-Bold.ttf"],
-      "substitutes_for": ["Times", "Georgia", "Baskerville"],
+      "files": [
+        "NotoSerif-Regular.ttf",
+        "NotoSerif-Bold.ttf"
+      ],
+      "substitutes_for": [
+        "Times",
+        "Georgia",
+        "Baskerville"
+      ],
       "metric_compatible": false,
-      "license": "SIL Open Font License 1.1"
+      "license": "SIL Open Font License 1.1",
+      "family": "Noto Serif"
     },
     "dejavu_mono": {
-      "files": ["DejaVuSansMono.ttf"],
-      "substitutes_for": ["Menlo", "Monaco"],
+      "files": [
+        "DejaVuSansMono.ttf"
+      ],
+      "substitutes_for": [
+        "Menlo",
+        "Monaco"
+      ],
       "metric_compatible": false,
       "license": "Bitstream Vera License",
-      "rendering_note": "Menlo is based on DejaVu Sans Mono, so metrics are very close"
+      "rendering_note": "Menlo is based on DejaVu Sans Mono, so metrics are very close",
+      "family": "DejaVu Sans Mono"
     },
     "eb_garamond": {
-      "files": ["EBGaramond-Regular.ttf"],
-      "substitutes_for": ["Garamond", "Hoefler Text"],
+      "files": [
+        "EBGaramond-Regular.ttf"
+      ],
+      "substitutes_for": [
+        "Garamond",
+        "Hoefler Text"
+      ],
       "metric_compatible": false,
-      "license": "SIL Open Font License 1.1"
+      "license": "SIL Open Font License 1.1",
+      "family": "EB Garamond"
     },
     "noto_sans_jp": {
-      "files": ["NotoSansJP-Regular.ttf", "NotoSansJP-Bold.ttf"],
-      "substitutes_for": ["Hiragino Sans", "Hiragino Kaku Gothic ProN"],
+      "files": [
+        "NotoSansJP-Regular.ttf",
+        "NotoSansJP-Bold.ttf"
+      ],
+      "substitutes_for": [
+        "Hiragino Sans",
+        "Hiragino Kaku Gothic ProN"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["JP"]
+      "regions": [
+        "JP"
+      ],
+      "family": "Noto Sans JP"
     },
     "noto_sans_kr": {
-      "files": ["NotoSansKR-Regular.ttf"],
-      "substitutes_for": ["Apple SD Gothic Neo"],
+      "files": [
+        "NotoSansKR-Regular.ttf"
+      ],
+      "substitutes_for": [
+        "Apple SD Gothic Neo"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["KR"]
+      "regions": [
+        "KR"
+      ],
+      "family": "Noto Sans KR"
     },
     "noto_sans_sc": {
-      "files": ["NotoSansSC-Regular.ttf"],
-      "substitutes_for": ["PingFang SC"],
+      "files": [
+        "NotoSansSC-Regular.ttf"
+      ],
+      "substitutes_for": [
+        "PingFang SC"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["CN"]
+      "regions": [
+        "CN"
+      ],
+      "family": "Noto Sans SC"
     }
   }
 }

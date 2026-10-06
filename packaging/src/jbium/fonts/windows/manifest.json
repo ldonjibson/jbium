@@ -10,30 +10,41 @@
         "LiberationSans-Italic.ttf",
         "LiberationSans-BoldItalic.ttf"
       ],
-      "substitutes_for": ["Arial", "Arial Narrow"],
+      "substitutes_for": [
+        "Arial",
+        "Arial Narrow"
+      ],
       "metric_compatible": true,
       "license": "SIL Open Font License 1.1",
       "source": "https://github.com/liberationfonts/liberation-fonts",
-      "rendering_note": "Identical advance width, x-height, cap-height, and baseline metrics to Arial"
+      "rendering_note": "Identical advance width, x-height, cap-height, and baseline metrics to Arial",
+      "family": "Liberation Sans"
     },
     "liberation_serif": {
       "files": [
         "LiberationSerif-Regular.ttf",
         "LiberationSerif-Bold.ttf"
       ],
-      "substitutes_for": ["Times New Roman"],
+      "substitutes_for": [
+        "Times New Roman"
+      ],
       "metric_compatible": true,
       "license": "SIL Open Font License 1.1",
-      "source": "https://github.com/liberationfonts/liberation-fonts"
+      "source": "https://github.com/liberationfonts/liberation-fonts",
+      "family": "Liberation Serif"
     },
     "liberation_mono": {
       "files": [
         "LiberationMono-Regular.ttf",
         "LiberationMono-Bold.ttf"
       ],
-      "substitutes_for": ["Courier New"],
+      "substitutes_for": [
+        "Courier New",
+        "Consolas"
+      ],
       "metric_compatible": true,
-      "license": "SIL Open Font License 1.1"
+      "license": "SIL Open Font License 1.1",
+      "family": "Liberation Mono"
     },
     "carlito": {
       "files": [
@@ -42,20 +53,26 @@
         "Carlito-Italic.ttf",
         "Carlito-BoldItalic.ttf"
       ],
-      "substitutes_for": ["Calibri"],
+      "substitutes_for": [
+        "Calibri"
+      ],
       "metric_compatible": true,
       "license": "SIL Open Font License 1.1",
       "source": "https://github.com/googlefonts/carlito",
-      "rendering_note": "Identical metrics to Calibri — text measurement matches exactly"
+      "rendering_note": "Identical metrics to Calibri — text measurement matches exactly",
+      "family": "Carlito"
     },
     "caladea": {
       "files": [
         "Caladea-Regular.ttf",
         "Caladea-Bold.ttf"
       ],
-      "substitutes_for": ["Cambria"],
+      "substitutes_for": [
+        "Cambria"
+      ],
       "metric_compatible": true,
-      "license": "SIL Open Font License 1.1"
+      "license": "SIL Open Font License 1.1",
+      "family": "Caladea"
     },
     "noto_sans": {
       "files": [
@@ -63,57 +80,116 @@
         "NotoSans-Bold.ttf",
         "NotoSans-Italic.ttf"
       ],
-      "substitutes_for": ["Segoe UI", "Verdana", "Tahoma"],
+      "substitutes_for": [
+        "Segoe UI",
+        "Verdana",
+        "Tahoma"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "source": "https://fonts.google.com/noto",
-      "rendering_note": "Not metric-compatible but similar proportions to Segoe UI"
+      "rendering_note": "Not metric-compatible but similar proportions to Segoe UI",
+      "family": "Noto Sans"
     },
     "noto_sans_jp": {
-      "files": ["NotoSansJP-Regular.ttf", "NotoSansJP-Bold.ttf"],
-      "substitutes_for": ["Yu Gothic", "MS Gothic", "Meiryo"],
+      "files": [
+        "NotoSansJP-Regular.ttf",
+        "NotoSansJP-Bold.ttf"
+      ],
+      "substitutes_for": [
+        "Yu Gothic",
+        "MS Gothic",
+        "Meiryo"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["JP"]
+      "regions": [
+        "JP"
+      ],
+      "family": "Noto Sans JP"
     },
     "noto_sans_kr": {
-      "files": ["NotoSansKR-Regular.ttf", "NotoSansKR-Bold.ttf"],
-      "substitutes_for": ["Malgun Gothic", "Nanum Gothic"],
+      "files": [
+        "NotoSansKR-Regular.ttf",
+        "NotoSansKR-Bold.ttf"
+      ],
+      "substitutes_for": [
+        "Malgun Gothic",
+        "Nanum Gothic"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["KR"]
+      "regions": [
+        "KR"
+      ],
+      "family": "Noto Sans KR"
     },
     "noto_sans_sc": {
-      "files": ["NotoSansSC-Regular.ttf", "NotoSansSC-Bold.ttf"],
-      "substitutes_for": ["Microsoft YaHei", "SimHei"],
+      "files": [
+        "NotoSansSC-Regular.ttf",
+        "NotoSansSC-Bold.ttf"
+      ],
+      "substitutes_for": [
+        "Microsoft YaHei",
+        "SimHei"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["CN"]
+      "regions": [
+        "CN"
+      ],
+      "family": "Noto Sans SC"
     },
     "noto_sans_tc": {
-      "files": ["NotoSansTC-Regular.ttf"],
-      "substitutes_for": ["Microsoft JhengHei"],
+      "files": [
+        "NotoSansTC-Regular.ttf"
+      ],
+      "substitutes_for": [
+        "Microsoft JhengHei"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["TW", "HK"]
+      "regions": [
+        "TW",
+        "HK"
+      ],
+      "family": "Noto Sans TC"
     },
     "noto_sans_arabic": {
-      "files": ["NotoSansArabic-Regular.ttf"],
-      "substitutes_for": ["Segoe UI Arabic"],
+      "files": [
+        "NotoSansArabic-Regular.ttf"
+      ],
+      "substitutes_for": [
+        "Segoe UI Arabic"
+      ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "regional": true,
-      "regions": ["SA", "AE", "EG", "QA", "KW", "JO"]
+      "regions": [
+        "SA",
+        "AE",
+        "EG",
+        "QA",
+        "KW",
+        "JO"
+      ],
+      "family": "Noto Sans Arabic"
     },
     "gelasio": {
-      "files": ["Gelasio-Regular.ttf", "Gelasio-Bold.ttf"],
-      "substitutes_for": ["Georgia"],
+      "files": [
+        "Gelasio-Regular.ttf",
+        "Gelasio-Bold.ttf"
+      ],
+      "substitutes_for": [
+        "Georgia"
+      ],
       "metric_compatible": true,
-      "license": "SIL Open Font License 1.1"
+      "license": "SIL Open Font License 1.1",
+      "family": "Gelasio"
     }
   }
 }

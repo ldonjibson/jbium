@@ -162,6 +162,7 @@ async () => {
     for (const base of bases) baseline[base] = widthIn(base);
 
     const results = {};
+    const seenWidths = {};
     for (const family of families) {
         let differing = 0;
         for (const base of bases) {
@@ -169,6 +170,12 @@ async () => {
                 differing += 1;
             }
         }
+        const w = widthIn('"' + family + '"');
+        // The distinct-width cluster count: if every "resolved" family
+        // measures the same width, they all resolved to ONE face -- the
+        // signature the second live run showed (all 12 Windows families
+        // at exactly 902, self-referential aliases resolving nothing).
+        seenWidths[family] = w;
         let check;
         try {
             check = document.fonts.check('12px "' + family + '"');
@@ -178,11 +185,16 @@ async () => {
         results[family] = {
             resolves: differing >= 2,
             differingBases: differing,
-            width: widthIn('"' + family + '"'),
+            width: w,
             check,
         };
     }
-    return { baseline, results };
+    const resolvedWidths = [...new Set(
+        Object.entries(results)
+            .filter(([f, r]) => r.resolves)
+            .map(([f, r]) => r.width)
+    )];
+    return { baseline, results, distinctResolvedWidths: resolvedWidths.length };
 }
 """
 
@@ -378,10 +390,9 @@ def report_font_checks(probe, device, env_vars, failures: int, warnings: int):
 
     print(f"\n--- Fonts vs. claimed OS ({claimed}, "
           f"STEALTH_FONT_OS={font_os}, STEALTH_FONT_REGION={font_region}) ---")
-    print("  (driver writes a per-session fontconfig at launch, but it needs the"
-          " font files: 'python fonts/download_fonts.py --all' (repo) or"
-          " 'jbium fetch-fonts' (pip install); without them it warns and uses"
-          " the host's fonts)")
+    print("  (driver writes a per-session fontconfig at launch; needs the font"
+          " files: 'python fonts/download_fonts.py --all' (repo) or"
+          " 'jbium fetch-fonts' (pip install))")
 
     expected = FONT_EXPECTED.get(claimed)
     if expected is None:
@@ -395,6 +406,23 @@ def report_font_checks(probe, device, env_vars, failures: int, warnings: int):
                        r.get("resolves", False),
                        f"fonts.check={r.get('check')!r}, width={r.get('width')!r}"):
             failures += 1
+
+    # The distinct-width cluster check: resolving to a *different face
+    # per family is the point. If all resolved families measure one
+    # width, the substitution machinery is a no-op (exactly what the
+    # 2026-10-06 second run showed: 12 families, one width, 902).
+    distinct = probe.get("distinctResolvedWidths", 0)
+    resolved_count = sum(1 for f in expected if results.get(f, {}).get("resolves"))
+    if resolved_count >= 2:
+        if not _report(f"resolved families measure {distinct} distinct widths"
+                       " (each family must be a different face)",
+                       distinct >= 2,
+                       f"{resolved_count} resolved, {distinct} distinct width(s)"):
+            failures += 1
+            print("  -> diagnosis: every family resolved to ONE face -- the"
+                  " fontconfig aliases point at themselves or the claimed"
+                  " name, not the substitute's real family (see the manifest's"
+                  " 'family' field and _setup_session_fonts)")
 
     if claimed in ("Windows", "macOS"):
         for family in HOST_ONLY_FAMILIES:

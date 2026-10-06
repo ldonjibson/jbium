@@ -220,9 +220,21 @@ def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
         tree = ET.parse(conf)  # must be well-formed XML
         assert tree.getroot().tag == "fontconfig"
         text = conf.read_text()
-        assert "Arial" in text                     # alias from the manifest's substitutes_for
-        assert "/etc/fonts" not in text            # host config must not leak in
-        assert str(bundle.resolve()) in text       # points at the claimed-OS bundle
+        # Real alias targets, not self-references: Arial must accept the
+        # substitute's real family name, not Arial again. The first
+        # implementation wrote <family>Arial</family><accept>Arial</accept>
+        # -- a no-op that made every family resolve to one generic face
+        # (caught live: all 12 Windows families measured width 902).
+        aliases = tree.findall(".//alias")
+        assert aliases, "no alias rules generated"
+        for a in aliases:
+            claimed = a.find("family").text
+            accept = a.find("accept/family").text
+            assert claimed != accept, f"self-referential alias: {claimed} -> {accept}"
+        assert "Arial" in text and "Liberation Sans" in text
+        assert "/etc/fonts" not in text          # host config must not leak in
+        assert "/usr/share/fonts" not in text    # host font dirs must not leak either
+        assert str(bundle.resolve()) in text     # points at the claimed-OS bundle
     finally:
         # The full launch path cleans this up in close(); a direct call
         # doesn't, so the test does it itself.

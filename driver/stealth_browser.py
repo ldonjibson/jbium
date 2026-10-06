@@ -1139,43 +1139,96 @@ class Jbium:
         cache_path.mkdir(parents=True, exist_ok=True)
         self._fontconfig_dir = cache_path
 
-        # Every claimed-OS family -> its substitute, from the bundle's
-        # own manifest (single source of truth, same file download_fonts
-        # fills and FontManager verifies).
+        # Real aliases from the manifest: claimed family -> the
+        # substitute font's real family name. The first version of this
+        # config wrote self-referential <alias> entries (Arial->Arial),
+        # which fontconfig resolves to nothing — every family fell to
+        # one generic face and the page measured one identical width
+        # for all of them (caught live, 2026-10-06, second run: all 12
+        # Windows families measured exactly 902). Each alias needs the
+        # target font's real family ("Liberation Sans"), which the
+        # manifest's new "family" field carries.
         aliases_xml = ""
+        n_aliases = 0
         manifest_path = font_dir / "manifest.json"
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             for group in manifest.get("fonts", {}).values():
+                target = group.get("family")
+                if not target:
+                    continue
                 for claimed in group.get("substitutes_for", []):
                     aliases_xml += (
-                        f"  <alias>\n"
+                        f"  <alias binding=\"same\">\n"
                         f"    <family>{claimed}</family>\n"
-                        f"    <accept><family>{claimed}</family></accept>\n"
+                        f"    <accept><family>{target}</family></accept>\n"
                         f"  </alias>\n"
                     )
+                    n_aliases += 1
         except (OSError, ValueError) as e:
             # A broken manifest shouldn't take the whole launch down --
             # bundle fonts still load via <dir> without aliases.
             logger.warning(f"  Could not read {manifest_path} ({e}) — fonts.conf written without family aliases")
 
-        # Substitute-family <dir> first, then the host dirs: fontconfig
-        # resolves a family to the first dir that has it, so a Windows
-        # claim never sees DejaVu unless the substitute is absent.
-        # /etc/fonts is NOT included: FONTCONFIG_PATH replaces it, which
-        # is what keeps host fontconfig aliases (and their substitutions)
-        # from leaking through.
+        # The claimed OS's bundle is the ONLY font directory. Including
+        # /usr/share/fonts here (as the first version did) leaked the
+        # host's DejaVu straight through the "private" config — caught
+        # live on the second run, where "DejaVu Sans Mono" resolved
+        # while the profile claimed Windows. The trade-off is
+        # deliberate: a page using an unusual CJK/script family the
+        # bundle lacks falls back to fontconfig's generic default
+        # rather than revealing the host's fonts, which is the safer
+        # failure mode for a fingerprint-consistency tool. If the
+        # config turns out unusable for real browsing (tofu boxes for
+        # scripts the bundle doesn't cover), the fix is more bundled
+        # families, not re-admitting host dirs.
         config = f"""<?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
   <dir>{font_dir.resolve()}</dir>
-  <dir>/usr/share/fonts</dir>
-  <dir>/usr/local/share/fonts</dir>
   <cachedir>{(cache_path / "cache").resolve()}</cachedir>
 {aliases_xml}</fontconfig>
 """
         (cache_path / "fonts.conf").write_text(config, encoding="utf-8")
-        logger.info(f"  Font profile: {platform_dir} bundle ({len(aliases_xml.splitlines()) // 4} aliases) via private fontconfig")
+
+        # Verify the config actually works before trusting it with the
+        # session: fc-match under the private config must resolve a
+        # claimed family to a bundled font. If it doesn't, the session
+        # silently renders everything in one generic face — worse than
+        # the host's real fonts, and exactly what the second live run
+        # showed. Fall back to the host config and say so.
+        sample = json.loads(manifest_path.read_text(encoding="utf-8")) \
+            if manifest_path.exists() else {}
+        sample_family = next(
+            (g.get("substitutes_for", ["sans-serif"])[0]
+             for g in sample.get("fonts", {}).values() if g.get("substitutes_for")),
+            "sans-serif",
+        )
+        try:
+            probe = subprocess.run(
+                ["fc-match", "-f", "%{file}", sample_family],
+                env={**os.environ,
+                     "FONTCONFIG_PATH": str(cache_path),
+                     "FONTCONFIG_FILE": "fonts.conf"},
+                capture_output=True, text=True, timeout=15,
+            )
+            resolved = probe.stdout.strip()
+            if probe.returncode != 0 or not resolved.startswith(str(font_dir.resolve())):
+                raise RuntimeError(f"fc-match resolved {sample_family!r} to {resolved!r}")
+            logger.info(f"  Font profile: {platform_dir} bundle, {n_aliases} aliases "
+                        f"({sample_family!r} -> {Path(resolved).name}); private fontconfig verified")
+        except FileNotFoundError:
+            logger.info(f"  Font profile: {platform_dir} bundle ({n_aliases} aliases) via private fontconfig "
+                        "(fc-match not installed to verify against)")
+        except Exception as e:
+            logger.warning(
+                f"  Private fontconfig does NOT resolve claimed fonts ({e}) — "
+                "falling back to the host's fonts. Check that the bundle's "
+                "manifest 'family' names match the fonts' real names."
+            )
+            shutil.rmtree(cache_path, ignore_errors=True)
+            self._fontconfig_dir = None
+            return {}
 
         return {
             "FONTCONFIG_PATH": str(cache_path),
