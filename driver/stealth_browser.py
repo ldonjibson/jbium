@@ -1122,7 +1122,7 @@ class Jbium:
 
         fonts_root = fonts_root or Path(__file__).parent.parent / "fonts"
         font_dir = fonts_root / platform_dir
-        if not font_dir.is_dir() or not any(font_dir.glob("*.ttf")):
+        if not font_dir.is_dir() or not any(font_dir.glob("*.tt[fc]")):
             # The manifest ships; the font files don't until someone
             # runs fonts/download_fonts.py (or `jbium fetch-fonts`).
             # Missing fonts with a private fontconfig would render

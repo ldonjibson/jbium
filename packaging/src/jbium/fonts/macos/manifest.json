@@ -6,10 +6,7 @@
     "noto_sans": {
       "files": [
         "NotoSans-Regular.ttf",
-        "NotoSans-Bold.ttf",
-        "NotoSans-Italic.ttf",
-        "NotoSans-Medium.ttf",
-        "NotoSans-Light.ttf"
+        "NotoSans-Italic.ttf"
       ],
       "substitutes_for": [
         "SF Pro Text",
@@ -19,7 +16,8 @@
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "rendering_note": "Closest available to SF Pro. Similar humanist sans-serif proportions.",
-      "family": "Noto Sans"
+      "family": "Noto Sans",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "liberation_sans": {
       "files": [
@@ -38,8 +36,7 @@
     },
     "noto_serif": {
       "files": [
-        "NotoSerif-Regular.ttf",
-        "NotoSerif-Bold.ttf"
+        "NotoSerif-Regular.ttf"
       ],
       "substitutes_for": [
         "Times",
@@ -48,7 +45,8 @@
       ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
-      "family": "Noto Serif"
+      "family": "Noto Serif",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "dejavu_mono": {
       "files": [
@@ -77,8 +75,7 @@
     },
     "noto_sans_jp": {
       "files": [
-        "NotoSansJP-Regular.ttf",
-        "NotoSansJP-Bold.ttf"
+        "NotoSansJP-Regular.ttf"
       ],
       "substitutes_for": [
         "Hiragino Sans",
@@ -90,7 +87,8 @@
       "regions": [
         "JP"
       ],
-      "family": "Noto Sans JP"
+      "family": "Noto Sans JP",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "noto_sans_kr": {
       "files": [

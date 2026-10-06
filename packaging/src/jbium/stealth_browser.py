@@ -1131,19 +1131,25 @@ class Jbium:
             logger.warning(f"  No font bundle for STEALTH_FONT_OS={font_os!r} — using host fonts")
             return {}
 
-        # Packaged fonts ship inside the installed package
-        # (jbium/fonts/...), installed by `jbium fetch-fonts`.
+        # Packaged fonts: a single shared pool of font files at
+        # jbium/fonts/ (the same font file is used by several claimed
+        # OSes — Noto Sans backs Windows, macOS and Linux claims alike —
+        # so one deduplicated pool saves ~2/3 of the installed size vs
+        # per-platform copies), with the per-OS alias sets living in
+        # jbium/fonts/<platform>/manifest.json. Installed by
+        # `jbium fetch-fonts`, or shipped as package-data at build time.
         fonts_root = fonts_root or _PACKAGE_DIR / "fonts"
         font_dir = fonts_root / platform_dir
-        if not font_dir.is_dir() or not any(font_dir.glob("*.ttf")):
+        font_file_dir = font_dir if any(font_dir.glob("*.tt[fc]")) else fonts_root
+        if not font_file_dir.is_dir() or not any(font_file_dir.glob("*.tt[fc]")):
             # The manifest ships; the font files don't until someone
             # runs `jbium fetch-fonts` (or the repo's
             # fonts/download_fonts.py). Missing fonts with a private
             # fontconfig would render *nothing*, which is worse than the
             # host's real fonts.
             logger.warning(
-                f"  Font bundle empty at {font_dir} — no fontconfig override. "
-                "Run 'jbium fetch-fonts' to install the claimed-OS fonts; "
+                f"  Font pool empty at {fonts_root} — no fontconfig override. "
+                "Run 'jbium fetch-fonts' to install the fonts; "
                 "until then the page sees the host's fonts"
             )
             return {}
@@ -1198,7 +1204,7 @@ class Jbium:
         config = f"""<?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
-  <dir>{font_dir.resolve()}</dir>
+  <dir>{font_file_dir.resolve()}</dir>
   <cachedir>{(cache_path / "cache").resolve()}</cachedir>
 {aliases_xml}</fontconfig>
 """
@@ -1228,7 +1234,7 @@ class Jbium:
                 capture_output=True, text=True, timeout=15,
             )
             resolved = probe.stdout.strip()
-            if probe.returncode != 0 or not resolved.startswith(str(font_dir.resolve())):
+            if probe.returncode != 0 or not resolved.startswith(str(font_file_dir.resolve())):
                 raise RuntimeError(f"fc-match resolved {sample_family!r} to {resolved!r}")
             logger.info(f"  Font profile: {platform_dir} bundle, {n_aliases} aliases "
                         f"({sample_family!r} -> {Path(resolved).name}); private fontconfig verified")

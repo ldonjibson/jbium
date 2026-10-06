@@ -176,10 +176,18 @@ class FontManager:
         return profile
 
     def _check_bundle(self, platform_dir: str) -> Tuple[List[str], List[str]]:
-        """Cross-check the manifest's declared files against disk."""
+        """
+        Cross-check the manifest's declared files against disk.
+
+        Shared-pool layout: font files sit flat at fonts_root/ (the same
+        file backs several claimed OSes), so a file is present if it
+        exists either there or under fonts_root/<platform>/ (the repo
+        tree's per-platform layout). The manifests themselves always
+        live under fonts_root/<platform>/.
+        """
 
         manifest = self.get_manifest(platform_dir)
-        fonts_dir = self.fonts_root / platform_dir
+        platform_dir_path = self.fonts_root / platform_dir
 
         all_files: List[str] = []
         missing: List[str] = []
@@ -187,7 +195,8 @@ class FontManager:
         for font_group in manifest.get("fonts", {}).values():
             for filename in font_group.get("files", []):
                 all_files.append(filename)
-                if not (fonts_dir / filename).exists():
+                if not (platform_dir_path / filename).exists() \
+                        and not (self.fonts_root / filename).exists():
                     missing.append(filename)
 
         return all_files, missing

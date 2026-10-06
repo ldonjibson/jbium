@@ -374,13 +374,19 @@ def fetch_fonts(platforms=None, force: bool = False) -> Path:
 
     from jbium.font_urls import URLS, PLATFORM_FONTS
 
+    # Shared pool layout: font files sit flat at jbium/fonts/ (the same
+    # file backs several claimed OSes, so one deduplicated copy saves
+    # ~2/3 of the size vs per-platform dirs), and the per-OS alias
+    # sets live in jbium/fonts/<platform>/manifest.json. The wheel ships
+    # the same layout as package-data, so a fresh install works with no
+    # fetch step; this command remains the repair/refresh path.
     fonts_root = Path(__file__).parent / "fonts"
+    pool_dir = fonts_root
     platforms = platforms or list(PLATFORM_FONTS)
 
     if force:
-        for p in platforms:
-            for f in (fonts_root / p).glob("*.ttf"):
-                f.unlink()
+        for f in pool_dir.glob("*.tt[fc]"):
+            f.unlink()
 
     total_fail = 0
     for platform in platforms:
@@ -388,13 +394,11 @@ def fetch_fonts(platforms=None, force: bool = False) -> Path:
             print(f"  unknown platform: {platform}")
             total_fail += 1
             continue
-        platform_dir = fonts_root / platform
-        platform_dir.mkdir(parents=True, exist_ok=True)
         print(f"  {platform}:")
 
         def _have(group) -> bool:
             names = group.get("files") or group.get("extract_patterns") or {}
-            return bool(names) and all((platform_dir / n).exists() for n in names)
+            return bool(names) and all((pool_dir / n).exists() for n in names)
 
         for group_name in PLATFORM_FONTS[platform]:
             group = URLS[group_name]
@@ -404,7 +408,7 @@ def fetch_fonts(platforms=None, force: bool = False) -> Path:
             try:
                 if group["type"] == "direct":
                     for out_name, path in group["files"].items():
-                        dest = platform_dir / out_name
+                        dest = pool_dir / out_name
                         if dest.exists() and not force:
                             continue
                         _download(f"{group['base_url']}/{path}", dest)
@@ -415,11 +419,11 @@ def fetch_fonts(platforms=None, force: bool = False) -> Path:
                     patterns = group["extract_patterns"]
                     if group["type"] == "zip":
                         with zipfile.ZipFile(archive) as zf:
-                            _extract_zip_members(zf, patterns, platform_dir)
+                            _extract_zip_members(zf, patterns, pool_dir)
                     else:
                         mode = "r:gz" if group["type"] == "tar.gz" else "r:bz2"
                         with tarfile.open(archive, mode) as tar:
-                            _extract_tar_members(tar, patterns, platform_dir)
+                            _extract_tar_members(tar, patterns, pool_dir)
                     print(f"    {group_name} ({len(patterns)} files)")
             except (urllib.error.URLError, OSError, RuntimeError) as e:
                 total_fail += 1
@@ -499,9 +503,11 @@ def main(argv=None) -> int:
 
     fonts_p = sub.add_parser(
         "fetch-fonts",
-        help="Download the metric-compatible font bundles (Arial/Calibri/Cambria "
+        help="Download the metric-compatible font pool (Arial/Calibri/Cambria "
              "substitutes etc.) into the installed package, so the driver's "
-             "per-session fontconfig can present the claimed OS's fonts",
+             "per-session fontconfig can present the claimed OS's fonts. "
+             "Only needed on installs predating the bundled-font wheels "
+             "(fonts now ship in the package) or to refresh them",
     )
     fonts_p.add_argument(
         "--platform", action="append", choices=["windows", "macos", "linux"],

@@ -77,7 +77,6 @@
     "noto_sans": {
       "files": [
         "NotoSans-Regular.ttf",
-        "NotoSans-Bold.ttf",
         "NotoSans-Italic.ttf"
       ],
       "substitutes_for": [
@@ -89,12 +88,12 @@
       "license": "SIL Open Font License 1.1",
       "source": "https://fonts.google.com/noto",
       "rendering_note": "Not metric-compatible but similar proportions to Segoe UI",
-      "family": "Noto Sans"
+      "family": "Noto Sans",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "noto_sans_jp": {
       "files": [
-        "NotoSansJP-Regular.ttf",
-        "NotoSansJP-Bold.ttf"
+        "NotoSansJP-Regular.ttf"
       ],
       "substitutes_for": [
         "Yu Gothic",
@@ -107,12 +106,12 @@
       "regions": [
         "JP"
       ],
-      "family": "Noto Sans JP"
+      "family": "Noto Sans JP",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "noto_sans_kr": {
       "files": [
-        "NotoSansKR-Regular.ttf",
-        "NotoSansKR-Bold.ttf"
+        "NotoSansKR-Regular.ttf"
       ],
       "substitutes_for": [
         "Malgun Gothic",
@@ -124,12 +123,12 @@
       "regions": [
         "KR"
       ],
-      "family": "Noto Sans KR"
+      "family": "Noto Sans KR",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "noto_sans_sc": {
       "files": [
-        "NotoSansSC-Regular.ttf",
-        "NotoSansSC-Bold.ttf"
+        "NotoSansSC-Regular.ttf"
       ],
       "substitutes_for": [
         "Microsoft YaHei",
@@ -141,7 +140,8 @@
       "regions": [
         "CN"
       ],
-      "family": "Noto Sans SC"
+      "family": "Noto Sans SC",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "noto_sans_tc": {
       "files": [

@@ -6,7 +6,6 @@
     "noto_sans": {
       "files": [
         "NotoSans-Regular.ttf",
-        "NotoSans-Bold.ttf",
         "NotoSans-Italic.ttf"
       ],
       "substitutes_for": [
@@ -15,7 +14,8 @@
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
       "note": "Default sans-serif on modern Linux distributions",
-      "family": "Noto Sans"
+      "family": "Noto Sans",
+      "variable_font_note": "Single variable font (wght axis) covers Regular/Medium/Bold/Light"
     },
     "dejavu_sans": {
       "files": [

@@ -43,10 +43,9 @@ jbium = [
     "config/*.json",
     "config/*.yaml",
     "fonts/*.xml",
+    "fonts/*.ttf",
+    "fonts/*.otf",
     "fonts/linux/*.json",
     "fonts/macos/*.json",
     "fonts/windows/*.json",
-    "fonts/linux/*.ttf",
-    "fonts/macos/*.ttf",
-    "fonts/windows/*.ttf",
 ]
