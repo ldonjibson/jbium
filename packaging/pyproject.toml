@@ -46,4 +46,7 @@ jbium = [
     "fonts/linux/*.json",
     "fonts/macos/*.json",
     "fonts/windows/*.json",
+    "fonts/linux/*.ttf",
+    "fonts/macos/*.ttf",
+    "fonts/windows/*.ttf",
 ]

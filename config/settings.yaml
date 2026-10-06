@@ -83,8 +83,13 @@ geoip:
 anti_detection:
   # WebRTC IP leak prevention
   filter_webrtc: true
-  # Battery API spoofing
-  spoof_battery: true
+  # Battery API spoofing -- INERT since 2026-10-06: the driver
+  # deliberately no longer sets STEALTH_BATTERY_* (patch 010 returns
+  # its hardcoded 1800/14400 constants regardless of charging state,
+  # a Battery Status spec violation -- one-line bot check). Unset,
+  # the real battery-less-server readings (desktop-AC profile) pass
+  # through spec-consistently. Nothing reads this flag.
+  spoof_battery: false
   # Canvas noise
   canvas_noise: true
   # WebGL spoofing

@@ -405,6 +405,21 @@ third_party/blink/renderer/modules/battery/battery_manager.cc
 - `STEALTH_FILTER_WEBRTC` / `STEALTH_PROXY_IP` — driver-side
   WebRTC policy
 
+**Driver status (2026-10-06): both battery vars deliberately NOT set.**
+The getters above return their hardcoded 1800/14400 constants
+*regardless of charging state* whenever either var is present — a
+Battery Status spec violation (dischargingTime must be `Infinity`
+while charging, and vice versa) that a page flags in one line, and the
+identical constants across every jbium session ever built are a
+cross-session cluster signature. Verified live: setting the vars
+produced the spec FAIL; with them unset the patch passes the real
+readings through, and a battery-less server reports the desktop-AC
+profile (`level=1, charging=true, chargingTime=0,
+dischargingTime=Infinity`) — spec-consistent and identical to every
+real desktop Chrome. Until the getters respect charging state (needs
+a rebuild), unset is the safe default; callers can still force a
+spoof via `launch(fingerprint_overrides=...)`.
+
 ---
 
 ## Patch 011: AudioContext Noise — NOT YET WIRED UP

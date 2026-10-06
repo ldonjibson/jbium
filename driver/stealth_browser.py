@@ -186,6 +186,7 @@ class Jbium:
         self._proxy_auth_extension_dir: Optional[str] = None
         self._user_data_dir: Optional[str] = None
         self._xvfb_process: Optional[subprocess.Popen] = None
+        self._fontconfig_dir: Optional[str] = None
 
         # CDP transport: --remote-debugging-pipe (see driver/cdp_pipe.py).
         # No TCP debugging port exists unless launch(expose_cdp_port=True)
@@ -480,6 +481,13 @@ class Jbium:
             shutil.rmtree(self._user_data_dir, ignore_errors=True)
             self._user_data_dir = None
 
+        # Remove this session's private fontconfig directory (it holds
+        # only the generated fonts.conf and fontconfig's cache; the font
+        # files themselves live in the shared bundle).
+        if self._fontconfig_dir:
+            shutil.rmtree(self._fontconfig_dir, ignore_errors=True)
+            self._fontconfig_dir = None
+
         logger.info("  ✅ Browser shut down")
     
     # ─────────────────────────────────────────────
@@ -697,9 +705,24 @@ class Jbium:
         # switch added in _spawn_browser.
 
         # ── Battery API (Patch 010) ──
-        # Session-stable, plausible values; unset = real readings pass through.
-        env_vars["STEALTH_BATTERY_LEVEL"] = f"{0.55 + (device.canvas_seed % 40) / 100.0:.2f}"
-        env_vars["STEALTH_BATTERY_CHARGING"] = "false" if device.canvas_seed % 2 else "true"
+        # Deliberately NOT set. Patch 010's getters return their
+        # hardcoded constants (chargingTime=1800, dischargingTime=14400)
+        # whenever either var is present, *regardless of charging state*
+        # -- a spec violation (the Battery Status spec requires
+        # dischargingTime=Infinity while charging, and vice versa) that
+        # any script can flag in one line, and the identical constants
+        # across every jbium session ever built are a cross-session
+        # cluster signature. Unset, the patch passes the real readings
+        # through: on a battery-less server that's the desktop-AC profile
+        # (level=1, charging=true, chargingTime=0,
+        # dischargingTime=Infinity) -- spec-consistent, and exactly what
+        # every real desktop Chrome reports. Verified live (2026-10-06):
+        # setting these vars produced the spec FAIL; leaving them unset
+        # produces the desktop-AC values.
+        # Patch 010's constant-return design needs the rebuild to fix
+        # properly (see patches/010_misc/apply.sh); until then, the
+        # real-readings passthrough is the safer default. Callers can
+        # still force a spoof via launch(fingerprint_overrides=...).
 
         return env_vars
 
@@ -1009,6 +1032,21 @@ class Jbium:
             env["DISPLAY"] = virtual_display
             env.pop("WAYLAND_DISPLAY", None)  # keep Chrome on the X11 display
 
+        # Font defense. Nothing compiled in reads STEALTH_FONT_OS/REGION
+        # (patch 006 is verify-only), so the *runtime* font defense is
+        # entirely here: a private fontconfig that exposes only the
+        # claimed OS's font bundle and aliases each Windows/macOS family
+        # to its metric-compatible substitute. Without this the page
+        # measures the host's fonts (typically one single DejaVu
+        # fallback for every family — verified live: all 12 Windows core
+        # families measured the identical width), which is a hard
+        # fingerprint violation no UA spoofing can cover. fontconfig is
+        # Linux's font stack — Windows (DirectWrite) and macOS (Core
+        # Text) use the OS font store, where this is a no-op.
+        if sys.platform.startswith("linux"):
+            font_env = self._setup_session_fonts(device_profile, env_vars)
+            env.update(font_env)
+
         logger.info(f"  Launching: {' '.join(args[:5])}...")
         logger.debug(f"  Full command: {' '.join(args)}")
         logger.debug(f"  ENV vars: {env_vars}")
@@ -1038,6 +1076,111 @@ class Jbium:
         threading.Thread(target=_drain, args=(process.stderr,), daemon=True).start()
 
         return process
+
+    def _setup_session_fonts(
+        self,
+        device: DeviceProfile,
+        env_vars: Dict[str, str],
+        fonts_root: Optional[Path] = None,
+    ) -> Dict[str, str]:
+        """
+        Write a per-session fontconfig so the page measures the claimed
+        OS's fonts, and return the FONTCONFIG_* env vars pointing at it.
+        Returns {} (browser uses the host's own config) when fonts aren't
+        installed or the claimed OS has no bundle. Only meaningful on
+        Linux (fontconfig); the caller gates on that — the file-writing
+        itself is platform-neutral so it stays unit-testable.
+
+        Why this exists (verified live, 2026-10-06, on the Jenkins box):
+        with no fontconfig override, every font family a "Windows"
+        profile promised measured the identical width — the page fell
+        back to one host font for all of them — and host-only families
+        (DejaVu) resolved while the UA claimed Windows. Both are hard
+        tells no UA spoofing covers.
+
+        The aliases map each claimed-OS family to its metric-compatible
+        substitute (Arial->Liberation Sans, Calibri->Carlito, ...), the
+        same pairs fonts/<platform>/manifest.json documents. Only the
+        claimed OS's own bundle directory is exposed, plus the host's
+        system dirs AFTER the substitutes, so an alias never shadows a
+        bundled font but pages with unusual fallback chains still
+        render — while the host's own config stays out entirely via
+        FONTCONFIG_PATH (no <include> of /etc/fonts), so an empty or
+        incomplete bundle cannot leak host-only families the way the
+        old broken launchers did.
+        """
+
+        font_os = env_vars.get("STEALTH_FONT_OS")
+        platform_dir = {
+            "WINDOWS_11": "windows", "WINDOWS_10": "windows",
+            "MACOS_SONOMA": "macos", "MACOS_VENTURA": "macos",
+            "UBUNTU": "linux", "DEBIAN": "linux",
+        }.get(font_os)
+        if not platform_dir:
+            logger.warning(f"  No font bundle for STEALTH_FONT_OS={font_os!r} — using host fonts")
+            return {}
+
+        fonts_root = fonts_root or Path(__file__).parent.parent / "fonts"
+        font_dir = fonts_root / platform_dir
+        if not font_dir.is_dir() or not any(font_dir.glob("*.ttf")):
+            # The manifest ships; the font files don't until someone
+            # runs fonts/download_fonts.py (or `jbium fetch-fonts`).
+            # Missing fonts with a private fontconfig would render
+            # *nothing*, which is worse than the host's real fonts.
+            logger.warning(
+                f"  Font bundle empty at {font_dir} — no fontconfig override. "
+                "Run 'python fonts/download_fonts.py --all' (repo) or "
+                "'jbium fetch-fonts' (pip install) to install the claimed-OS "
+                "fonts; until then the page sees the host's fonts"
+            )
+            return {}
+
+        cache_path = Path(tempfile.gettempdir()) / f"jbium-fonts-{uuid.uuid4().hex}"
+        cache_path.mkdir(parents=True, exist_ok=True)
+        self._fontconfig_dir = cache_path
+
+        # Every claimed-OS family -> its substitute, from the bundle's
+        # own manifest (single source of truth, same file download_fonts
+        # fills and FontManager verifies).
+        aliases_xml = ""
+        manifest_path = font_dir / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for group in manifest.get("fonts", {}).values():
+                for claimed in group.get("substitutes_for", []):
+                    aliases_xml += (
+                        f"  <alias>\n"
+                        f"    <family>{claimed}</family>\n"
+                        f"    <accept><family>{claimed}</family></accept>\n"
+                        f"  </alias>\n"
+                    )
+        except (OSError, ValueError) as e:
+            # A broken manifest shouldn't take the whole launch down --
+            # bundle fonts still load via <dir> without aliases.
+            logger.warning(f"  Could not read {manifest_path} ({e}) — fonts.conf written without family aliases")
+
+        # Substitute-family <dir> first, then the host dirs: fontconfig
+        # resolves a family to the first dir that has it, so a Windows
+        # claim never sees DejaVu unless the substitute is absent.
+        # /etc/fonts is NOT included: FONTCONFIG_PATH replaces it, which
+        # is what keeps host fontconfig aliases (and their substitutions)
+        # from leaking through.
+        config = f"""<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir>{font_dir.resolve()}</dir>
+  <dir>/usr/share/fonts</dir>
+  <dir>/usr/local/share/fonts</dir>
+  <cachedir>{(cache_path / "cache").resolve()}</cachedir>
+{aliases_xml}</fontconfig>
+"""
+        (cache_path / "fonts.conf").write_text(config, encoding="utf-8")
+        logger.info(f"  Font profile: {platform_dir} bundle ({len(aliases_xml.splitlines()) // 4} aliases) via private fontconfig")
+
+        return {
+            "FONTCONFIG_PATH": str(cache_path),
+            "FONTCONFIG_FILE": "fonts.conf",
+        }
 
     async def _start_virtual_display(self, device: DeviceProfile, timeout: float = 10) -> Optional[str]:
         """

@@ -1,6 +1,6 @@
 """
 ════════════════════════════════════════════════════════════
-Jbium CLI — `jbium fetch` / `jbium fetch-geoip`
+Jbium CLI — `jbium fetch` / `jbium fetch-geoip` / `jbium fetch-fonts`
 ════════════════════════════════════════════════════════════
 
 `jbium fetch` downloads the prebuilt stealth Chromium binary for the
@@ -19,6 +19,17 @@ no-signup mirror without one) to ~/.cache/jbium/geoip/ — the
 pip-installed-package equivalent of scripts/download_geoip.sh, which
 only exists in the from-source repo tree and isn't shipped with this
 package.
+
+`jbium fetch-fonts` downloads the metric-compatible font bundles
+(Liberation/Carlito/Caladea/Noto/... — Arial, Calibri, Cambria and
+friends for a "Windows" profile) into the installed package's own
+fonts/<platform>/ directories, next to the manifests that ship with
+it. Without these the driver's per-session fontconfig can't be built
+(see stealth_browser._setup_session_fonts) and every session falls
+back to the host's fonts — the state that produced the live-verified
+"every claimed-OS family measures one identical width" tell
+(2026-10-06). This is the pip-installed-package equivalent of the
+repo tree's fonts/download_fonts.py, whose URLs this shares.
 """
 
 import gzip
@@ -344,6 +355,106 @@ def fetch_geoip(
     return geoip_dir
 
 
+def fetch_fonts(platforms=None, force: bool = False) -> Path:
+    """
+    Download the metric-compatible font bundles into the installed
+    package's own jbium/fonts/<platform>/ directories (next to the
+    manifests that ship with it), using the exact URL table the repo
+    tree's fonts/download_fonts.py maintains -- single source of
+    truth, so a URL fix lands in both places via the packaging copy
+    of that table (jbium.font_urls).
+
+    Downloading into the package directory requires it to be writable
+    (a venv the user owns is the normal case; a system-wide root-owned
+    install should use the repo tree instead).
+    """
+
+    import tarfile
+    import zipfile
+
+    from jbium.font_urls import URLS, PLATFORM_FONTS
+
+    fonts_root = Path(__file__).parent / "fonts"
+    platforms = platforms or list(PLATFORM_FONTS)
+
+    if force:
+        for p in platforms:
+            for f in (fonts_root / p).glob("*.ttf"):
+                f.unlink()
+
+    total_fail = 0
+    for platform in platforms:
+        if platform not in PLATFORM_FONTS:
+            print(f"  unknown platform: {platform}")
+            total_fail += 1
+            continue
+        platform_dir = fonts_root / platform
+        platform_dir.mkdir(parents=True, exist_ok=True)
+        print(f"  {platform}:")
+
+        def _have(group) -> bool:
+            names = group.get("files") or group.get("extract_patterns") or {}
+            return bool(names) and all((platform_dir / n).exists() for n in names)
+
+        for group_name in PLATFORM_FONTS[platform]:
+            group = URLS[group_name]
+            if not force and _have(group):
+                continue
+            archive = None
+            try:
+                if group["type"] == "direct":
+                    for out_name, path in group["files"].items():
+                        dest = platform_dir / out_name
+                        if dest.exists() and not force:
+                            continue
+                        _download(f"{group['base_url']}/{path}", dest)
+                        print(f"    {out_name}")
+                else:
+                    archive = fonts_root / f".{group_name}-archive"
+                    _download(group["url"], archive)
+                    patterns = group["extract_patterns"]
+                    if group["type"] == "zip":
+                        with zipfile.ZipFile(archive) as zf:
+                            _extract_zip_members(zf, patterns, platform_dir)
+                    else:
+                        mode = "r:gz" if group["type"] == "tar.gz" else "r:bz2"
+                        with tarfile.open(archive, mode) as tar:
+                            _extract_tar_members(tar, patterns, platform_dir)
+                    print(f"    {group_name} ({len(patterns)} files)")
+            except (urllib.error.URLError, OSError, RuntimeError) as e:
+                total_fail += 1
+                print(f"    FAILED {group_name}: {e}")
+            finally:
+                if archive is not None:
+                    archive.unlink(missing_ok=True)
+
+    if total_fail:
+        raise RuntimeError(f"{total_fail} font download(s) failed")
+    print(f"OK: font bundles ready under {fonts_root}")
+    return fonts_root
+
+
+def _extract_tar_members(tar, extract_patterns, platform_dir):
+    for wanted, out_name in extract_patterns.items():
+        for member in tar.getmembers():
+            if wanted in member.name and member.isfile():
+                f = tar.extractfile(member)
+                (platform_dir / out_name).write_bytes(f.read())
+                break
+        else:
+            raise RuntimeError(f"{wanted} not found in archive")
+
+
+def _extract_zip_members(zf, extract_patterns, platform_dir):
+    for wanted, out_name in extract_patterns.items():
+        for member in zf.namelist():
+            if wanted in member and not member.endswith("/"):
+                (platform_dir / out_name).write_bytes(zf.read(member))
+                break
+        else:
+            raise RuntimeError(f"{wanted} not found in archive")
+
+
 def main(argv=None) -> int:
     import argparse
 
@@ -386,6 +497,21 @@ def main(argv=None) -> int:
         help="Re-download even if cached databases already exist",
     )
 
+    fonts_p = sub.add_parser(
+        "fetch-fonts",
+        help="Download the metric-compatible font bundles (Arial/Calibri/Cambria "
+             "substitutes etc.) into the installed package, so the driver's "
+             "per-session fontconfig can present the claimed OS's fonts",
+    )
+    fonts_p.add_argument(
+        "--platform", action="append", choices=["windows", "macos", "linux"],
+        help="Only fetch for this platform (repeatable; default: all three)",
+    )
+    fonts_p.add_argument(
+        "--force", action="store_true",
+        help="Re-download even if the font files already exist",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "fetch":
@@ -409,6 +535,14 @@ def main(argv=None) -> int:
                 asn_url=args.asn_url,
             )
         except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
+        return 0
+
+    if args.command == "fetch-fonts":
+        try:
+            fetch_fonts(platforms=args.platform, force=args.force)
+        except (RuntimeError, OSError) as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 1
         return 0

@@ -280,15 +280,32 @@ repo's `docs/PATCHES.md`.
 | `STEALTH_CANVAS_SEED` | `device.canvas_seed` | Canvas noise (004) |
 | `STEALTH_AUDIO_SEED` | `device.audio_seed` | **Not consumed yet** — `patches/011_audio` in the main repo is deliberately unwired |
 | `STEALTH_GPU_VENDOR` / `STEALTH_GPU_RENDERER` | `device.gpu_vendor`/`device.gpu_renderer` — ANGLE strings in the exact form Chrome 120 reports per OS | WebGL unmasked vendor/renderer (005) |
-| `STEALTH_FONT_OS` | mapped from `device.ua_platform` | Font profile for the fontconfig tooling (006) |
-| `STEALTH_FONT_REGION` | mapped from `geo.country_code` | Font profile for the fontconfig tooling (006) |
-| `STEALTH_BATTERY_LEVEL` / `STEALTH_BATTERY_CHARGING` | derived from `canvas_seed` | Battery API (010) |
+| `STEALTH_FONT_OS` | mapped from `device.ua_platform` | Selects the claimed-OS font bundle for the per-session fontconfig (see below) |
+| `STEALTH_FONT_REGION` | mapped from `geo.country_code` | Regional font flavor (JP/KR/CN/Arabic; documented for the font tooling) |
 
 Deliberately **not** set: `STEALTH_GPU_VERSION` / `STEALTH_GPU_GLSL_VERSION`
 (Chrome's WebGL version strings are fixed constants, identical on every
-machine — overriding them is what creates a tell) and the geo/WebRTC
-variables no patch reads. Any inherited `STEALTH_*`, `TZ` or `LANGUAGE`
-in the caller's own environment is dropped before launch.
+machine — overriding them is what creates a tell), the geo/WebRTC
+variables no patch reads, and `STEALTH_BATTERY_LEVEL` /
+`STEALTH_BATTERY_CHARGING`. The battery pair is unset on purpose: patch
+010 returns its hardcoded `1800`/`14400` constants *regardless of
+charging state* whenever either is present, violating the Battery
+Status spec (a one-line bot check) — unset, the real battery-less-server
+readings (`level=1, charging=true, chargingTime=0,
+dischargingTime=Infinity`) pass through, spec-consistent and identical
+to every real desktop Chrome. Any inherited `STEALTH_*`, `TZ` or
+`LANGUAGE` in the caller's own environment is dropped before launch.
+
+**Runtime font defense (Linux):** since no compiled patch reads
+`STEALTH_FONT_OS`, the driver itself writes a per-session fontconfig
+(`_setup_session_fonts`) exposing only the claimed OS's bundle and
+aliasing every Windows/macOS family to its metric-compatible
+substitute (Arial→Liberation Sans, Calibri→Carlito, ...), then points
+`FONTCONFIG_PATH`/`FONTCONFIG_FILE` at it. It needs the font files
+present: run `jbium fetch-fonts` once after install (equivalents:
+`python fonts/download_fonts.py --all` from a repo checkout). Without
+them it logs a warning and leaves the host fonts in place — an
+all-or-nothing fallback, never a half-broken config.
 
 ---
 

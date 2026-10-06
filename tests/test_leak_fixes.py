@@ -137,6 +137,14 @@ def test_env_vars_have_no_leaky_or_dead_values(template):
     assert env["STEALTH_UA_MODEL"] == ""
     assert env["STEALTH_UA_PLATFORM_VERSION"] == tmpl["ua_platform_version"]
     assert "STEALTH_FONT_OS" in env
+    # 6. Battery spoof vars are NOT set: patch 010 returns its
+    # 1800/14400 constants regardless of charging state whenever they
+    # are present, which violates the Battery Status spec (one-line bot
+    # check, verified live 2026-10-06). Unset, the patch passes the real
+    # battery-less-server readings through — the desktop-AC profile
+    # every real desktop Chrome reports.
+    assert "STEALTH_BATTERY_LEVEL" not in env
+    assert "STEALTH_BATTERY_CHARGING" not in env
     # Env vars no patch reads are not set.
     for dead in ("STEALTH_PROXY_IP", "STEALTH_FILTER_WEBRTC", "STEALTH_GEO_LANGUAGE", "STEALTH_WEBGL_SEED",
                  "STEALTH_GEO_TIMEZONE", "STEALTH_GEO_LOCALE", "STEALTH_GEO_CITY"):
@@ -171,6 +179,71 @@ def test_ua_override_params_consistent():
     assert meta["platformVersion"] == FINGERPRINTS["templates"]["macbook_pro"]["ua_platform_version"]
     assert meta["fullVersion"] == PINNED_VERSION
     assert meta["brands"][-1] == {"brand": "Google Chrome", "version": "120"}
+
+
+def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
+    """
+    The runtime font defense: _setup_session_fonts() must write a
+    private fonts.conf pointing at the claimed OS's bundle, alias every
+    family the bundle's manifest documents, and not include /etc/fonts
+    (FONTCONFIG_PATH replaces the host config — including it would let
+    host aliases/substitutions leak back in). Verified live (2026-10-06)
+    that without this, every claimed-OS family measures one identical
+    width — the hard tell this whole mechanism exists to close.
+    """
+    import xml.etree.ElementTree as ET
+
+    jb = make_jbium()
+    device = make_device("win_business_laptop")  # claims Windows
+    env = jb._generate_env_vars(device, make_geo(), "http://proxy.invalid:1")
+
+    # 1. Empty bundle (the repo's current manifest-only state) must
+    #    refuse the override rather than render nothing.
+    empty_root = tmp_path / "empty"
+    (empty_root / "windows").mkdir(parents=True)
+    shutil.copy(REPO / "fonts" / "windows" / "manifest.json",
+                empty_root / "windows" / "manifest.json")
+    assert jb._setup_session_fonts(device, env, fonts_root=empty_root) == {}
+
+    # 2. With font files present, the env vars + a valid config appear.
+    bundle = tmp_path / "full" / "windows"
+    bundle.mkdir(parents=True)
+    shutil.copy(REPO / "fonts" / "windows" / "manifest.json", bundle / "manifest.json")
+    (bundle / "LiberationSans-Regular.ttf").write_bytes(b"\x00\x01\x00\x00")
+
+    font_env = jb._setup_session_fonts(device, env, fonts_root=tmp_path / "full")
+    try:
+        assert font_env.get("FONTCONFIG_FILE") == "fonts.conf"
+        conf = Path(font_env["FONTCONFIG_PATH"]) / "fonts.conf"
+        assert conf.exists()
+
+        tree = ET.parse(conf)  # must be well-formed XML
+        assert tree.getroot().tag == "fontconfig"
+        text = conf.read_text()
+        assert "Arial" in text                     # alias from the manifest's substitutes_for
+        assert "/etc/fonts" not in text            # host config must not leak in
+        assert str(bundle.resolve()) in text       # points at the claimed-OS bundle
+    finally:
+        # The full launch path cleans this up in close(); a direct call
+        # doesn't, so the test does it itself.
+        if font_env:
+            shutil.rmtree(font_env["FONTCONFIG_PATH"], ignore_errors=True)
+
+    # 3. Non-Linux platform claims map to their own bundles, and an
+    #    unknown STEALTH_FONT_OS falls back to host fonts.
+    mac = make_device("macbook_pro")
+    mac_env = jb._generate_env_vars(mac, make_geo(), "http://proxy.invalid:1")
+    mac_root = tmp_path / "mac"
+    (mac_root / "macos").mkdir(parents=True)
+    (mac_root / "macos" / "NotoSans-Regular.ttf").write_bytes(b"\x00\x01\x00\x00")
+    mac_font_env = jb._setup_session_fonts(mac, mac_env, fonts_root=mac_root)
+    try:
+        assert mac_font_env != {}
+    finally:
+        if mac_font_env:
+            shutil.rmtree(mac_font_env["FONTCONFIG_PATH"], ignore_errors=True)
+    assert jb._setup_session_fonts(mac, {"STEALTH_FONT_OS": "GARBAGE"},
+                                   fonts_root=mac_root) == {}
 
 
 # ─────────────────────────────────────────────
