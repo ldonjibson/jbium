@@ -1260,13 +1260,17 @@ class Jbium:
             if reject_xml:
                 # Negative probe: a family whose file the claimed
                 # manifest does NOT reference must not resolve to that
-                # file. Uses a small static list of pool families that
-                # never belong to Windows/macOS claims (Ubuntu,
-                # DejaVu) rather than parsing font name tables.
+                # file. Keyed by platform_dir's actual values
+                # ("windows"/"macos"/"linux"); falls back to a safe
+                # default list rather than None if anything about the
+                # claim is unexpected (the 2026-10-12 1.2.1 regression:
+                # a capitalized-key mismatch made this lookup return
+                # None and crash the whole verification, which
+                # downgraded every launch to host fonts).
                 hidden_candidates = {
-                    "Windows": ["Ubuntu", "DejaVu Sans", "DejaVu Sans Mono"],
-                    "macOS": ["Ubuntu", "DejaVu Sans", "DejaVu Serif"],
-                }.get(platform_dir if platform_dir in ("windows", "macos") else "Windows")
+                    "windows": ["Ubuntu", "DejaVu Sans", "DejaVu Sans Mono"],
+                    "macos": ["Ubuntu", "DejaVu Sans", "DejaVu Serif"],
+                }.get(platform_dir) or ["Ubuntu", "DejaVu Sans"]
                 referenced = set()
                 for group in manifest.get("fonts", {}).values():
                     referenced.update(group.get("files", []))

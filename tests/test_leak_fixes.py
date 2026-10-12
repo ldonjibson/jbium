@@ -285,6 +285,67 @@ def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
                                    fonts_root=mac_root) == {}
 
 
+def test_negative_probe_never_crashes_verification(monkeypatch):
+    """
+    The 1.2.1 regression (2026-10-12, live): the negative-probe's
+    hidden-candidates lookup used capitalized dict keys against
+    lowercase platform_dir values, returned None on every claim, and
+    the resulting TypeError crashed the whole fc-match verification --
+    downgrading every launch to host fonts (all 12 families back to
+    one host width). This test executes the verification path itself
+    with fc-match mocked, for every platform_dir value the driver can
+    produce, so a data-shape bug in the probe can never crash
+    verification again.
+    """
+    import tempfile
+
+    class _FakeCompleted:
+        def __init__(self, stdout, returncode=0):
+            self.stdout = stdout
+            self.returncode = returncode
+
+    def _fake_run(cmd, env=None, capture_output=None, text=None, timeout=None):
+        # 'fc-match -f %{family} <claimed>' -> the alias target
+        if "%{family}" in cmd:
+            return _FakeCompleted(cmd[-1])  # echoes the claimed name
+        # 'fc-match -f %{file} <family>' -> some unreferenced pool file
+        return _FakeCompleted("/pool/SomeUnreferenced.ttf")
+
+    import subprocess as _subprocess
+    monkeypatch.setattr(_subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        "driver.stealth_browser.subprocess.run", _fake_run, raising=True
+    )
+
+    jb = make_jbium()
+    device = make_device("win_business_laptop")
+    env = jb._generate_env_vars(device, make_geo(), "http://proxy.invalid:1")
+
+    # Exercise the verification's data path for every platform_dir the
+    # driver maps to, in a bundle with fonts + a manifest present.
+    for font_os in ("WINDOWS_11", "MACOS_SONOMA", "UBUNTU"):
+        fonts_root = Path(tempfile.mkdtemp())
+        try:
+            pdir = {"WINDOWS_11": "windows", "MACOS_SONOMA": "macos", "UBUNTU": "linux"}[font_os]
+            (fonts_root / pdir).mkdir(parents=True)
+            shutil.copy(REPO / "fonts" / pdir / "manifest.json",
+                        fonts_root / pdir / "manifest.json")
+            (fonts_root / pdir / "LiberationSans-Regular.ttf").write_bytes(b"\x00\x01\x00\x00")
+            # The call must not raise: with fc-match mocked to a
+            # mismatched family, verification "fails" and falls back
+            # (returning {}) -- the point is it returns at all, not a
+            # TypeError from the probe's own data handling.
+            result = jb._setup_session_fonts(
+                device, {"STEALTH_FONT_OS": font_os}, fonts_root=fonts_root
+            )
+            assert isinstance(result, dict), (
+                f"{font_os}: verification crashed instead of falling back "
+                f"(result={result!r})"
+            )
+        finally:
+            shutil.rmtree(fonts_root, ignore_errors=True)
+
+
 # ─────────────────────────────────────────────
 # Live tests (real browser through the driver's spawn path)
 # ─────────────────────────────────────────────
