@@ -284,11 +284,26 @@ mkdir -p "$PROJECT_DIR"/{patches,scripts,driver,fingerprints,tests,config}
 # ───────────────────────────────────────────────────────────────
 log "Step 8/9: Configuring build..."
 
+# Cross-compile support: the Jenkins runner is arm64 (aarch64), and
+# build boxes are commonly x86_64. Default to arm64 -- that's the
+# published binary this project ships (jbium-1.2.x-linux-arm64.tar.gz
+# for the aarch64 runner) -- but allow an explicit override for a
+# native build on any host:
+#   TARGET_CPU=x64 bash scripts/setup.sh   (build for the x86_64 host itself)
+TARGET_CPU="${TARGET_CPU:-arm64}"
+
 mkdir -p out/Release
-cat > out/Release/args.gn << 'EOF'
+cat > out/Release/args.gn << EOF
 # ═════════════════════════════════════════════
 # Jbium — Build Configuration
 # ═════════════════════════════════════════════
+
+# Target platform. arm64 = cross-compile for the aarch64 Jenkins
+# runner from an x86_64 build host (Chromium's supported path: the
+# arm64 sysroot is downloaded by gclient sync/runhooks, and
+# target_cpu alone is all that changes -- host tools stay native).
+target_cpu = "${TARGET_CPU}"
+target_os = "linux"
 
 # Build type
 is_debug = false

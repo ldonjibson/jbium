@@ -11,7 +11,11 @@ is_official_build = true
 # extra GREASE entry in the HTTP/2 SETTINGS frame real Chrome doesn't send).
 disable_fieldtrial_testing_config = true
 is_component_build = false
-target_cpu = "x64"       # or "arm64"
+# Target: the published binary is linux-arm64 (the aarch64 Jenkins
+# runner); an x86_64 build host cross-compiles it (Chromium's
+# supported path -- arm64 sysroot arrives via gclient sync/runhooks).
+# Use "x64" for a native build on an x86_64 machine.
+target_cpu = "arm64"
 target_os = "linux"
 
 # Optimization
