@@ -1159,16 +1159,20 @@ class Jbium:
         self._fontconfig_dir = cache_path
 
         # Real aliases from the manifest: claimed family -> the
-        # substitute font's real family name. The first version of this
-        # config wrote self-referential <alias> entries (Arial->Arial),
-        # which fontconfig resolves to nothing — every family fell to
-        # one generic face and the page measured one identical width
-        # for all of them (caught live, 2026-10-06, second run: all 12
-        # Windows families measured exactly 902). Each alias needs the
-        # target font's real family ("Liberation Sans"), which the
-        # manifest's "family" field carries.
+        # substitute font's real family name, as a HARD pattern rewrite
+        # (<match target="pattern"> + prepend with strong binding)
+        # rather than <alias><accept>. Two earlier live runs showed
+        # <accept> is not reliable here: it fired for families whose
+        # target had a static face in the pool (Arial->Liberation Sans
+        # worked) and silently fell through for others (Consolas,
+        # Georgia, Segoe UI all landed on fontconfig's generic default
+        # instead of their substitutes -- 2026-10-07 run, every miss
+        # measuring one identical default width). A prepend/strong rule
+        # replaces the requested family outright, so every claimed
+        # name resolves exactly where the manifest says, independent of
+        # what fontconfig's generic machinery would do with the name.
         aliases_xml = ""
-        n_aliases = 0
+        alias_pairs = []
         manifest_path = font_dir / "manifest.json"
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1178,12 +1182,16 @@ class Jbium:
                     continue
                 for claimed in group.get("substitutes_for", []):
                     aliases_xml += (
-                        f"  <alias binding=\"same\">\n"
-                        f"    <family>{claimed}</family>\n"
-                        f"    <accept><family>{target}</family></accept>\n"
-                        f"  </alias>\n"
+                        f"  <match target=\"pattern\">\n"
+                        f"    <test qual=\"any\" name=\"family\">\n"
+                        f"      <string>{claimed}</string>\n"
+                        f"    </test>\n"
+                        f"    <edit name=\"family\" mode=\"prepend\" binding=\"strong\">\n"
+                        f"      <string>{target}</string>\n"
+                        f"    </edit>\n"
+                        f"  </match>\n"
                     )
-                    n_aliases += 1
+                    alias_pairs.append((claimed, target))
         except (OSError, ValueError) as e:
             # A broken manifest shouldn't take the whole launch down --
             # bundle fonts still load via <dir> without aliases.
@@ -1210,40 +1218,45 @@ class Jbium:
 """
         (cache_path / "fonts.conf").write_text(config, encoding="utf-8")
 
-        # Verify the config actually works before trusting it with the
-        # session: fc-match under the private config must resolve a
-        # claimed family to a bundled font. If it doesn't, the session
-        # silently renders everything in one generic face — worse than
-        # the host's real fonts, and exactly what the second live run
-        # showed. Fall back to the host config and say so.
+        # Verify EVERY alias against fc-match before trusting the
+        # session. The 2026-10-07 live run showed one sample probe is
+        # not enough: 'Arial' verified fine while Consolas/Georgia/
+        # Segoe UI silently fell through to the generic default.
+        # Per-alias verification means the launch log states exactly
+        # which families resolve where, and a bad config falls back to
+        # host fonts instead of half-working.
+        verify_env = {
+            **os.environ,
+            "FONTCONFIG_PATH": str(cache_path),
+            "FONTCONFIG_FILE": "fonts.conf",
+        }
+        n_aliases = len(alias_pairs)
         try:
-            sample = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            sample = {}
-        sample_family = next(
-            (g.get("substitutes_for", ["sans-serif"])[0]
-             for g in sample.get("fonts", {}).values() if g.get("substitutes_for")),
-            "sans-serif",
-        )
-        try:
-            probe = subprocess.run(
-                ["fc-match", "-f", "%{file}", sample_family],
-                env={**os.environ,
-                     "FONTCONFIG_PATH": str(cache_path),
-                     "FONTCONFIG_FILE": "fonts.conf"},
-                capture_output=True, text=True, timeout=15,
-            )
-            resolved = probe.stdout.strip()
-            if probe.returncode != 0 or not resolved.startswith(str(font_file_dir.resolve())):
-                raise RuntimeError(f"fc-match resolved {sample_family!r} to {resolved!r}")
-            logger.info(f"  Font profile: {platform_dir} bundle, {n_aliases} aliases "
-                        f"({sample_family!r} -> {Path(resolved).name}); private fontconfig verified")
+            bad = []
+            for claimed, target in alias_pairs:
+                probe = subprocess.run(
+                    ["fc-match", "-f", "%{family}", claimed],
+                    env=verify_env,
+                    capture_output=True, text=True, timeout=15,
+                )
+                resolved_family = probe.stdout.strip()
+                # A hard rewrite must land the requested name on the
+                # substitute's family (fc-match reports the matched
+                # font's own family name).
+                if probe.returncode != 0 or resolved_family != target:
+                    bad.append(f"{claimed!r}->{resolved_family!r} (want {target!r})")
+            if bad:
+                raise RuntimeError("; ".join(bad[:5]) + (" ..." if len(bad) > 5 else ""))
+            sample = alias_pairs[0] if alias_pairs else ("sans-serif", "sans-serif")
+            logger.info(f"  Font profile: {platform_dir} bundle, {n_aliases} hard aliases, "
+                        f"all {n_aliases} verified via fc-match "
+                        f"({sample[0]!r} -> {sample[1]!r})")
         except FileNotFoundError:
-            logger.info(f"  Font profile: {platform_dir} bundle ({n_aliases} aliases) via private fontconfig "
-                        "(fc-match not installed to verify against)")
+            logger.info(f"  Font profile: {platform_dir} bundle ({n_aliases} hard aliases) "
+                        "via private fontconfig (fc-match not installed; aliases unverified)")
         except Exception as e:
             logger.warning(
-                f"  Private fontconfig does NOT resolve claimed fonts ({e}) — "
+                f"  Private fontconfig fails alias verification ({e}) — "
                 "falling back to the host's fonts. Check that the bundle's "
                 "manifest 'family' names match the fonts' real names."
             )

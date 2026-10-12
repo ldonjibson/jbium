@@ -82,7 +82,9 @@
       "substitutes_for": [
         "Segoe UI",
         "Verdana",
-        "Tahoma"
+        "Tahoma",
+        "Trebuchet MS",
+        "Impact"
       ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",

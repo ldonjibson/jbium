@@ -218,20 +218,27 @@ def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
         assert conf.exists()
 
         tree = ET.parse(conf)  # must be well-formed XML
-        assert tree.getroot().tag == "fontconfig"
+        root = tree.getroot()
+        assert root.tag == "fontconfig"
         text = conf.read_text()
-        # Real alias targets, not self-references: Arial must accept the
-        # substitute's real family name, not Arial again. The first
-        # implementation wrote <family>Arial</family><accept>Arial</accept>
-        # -- a no-op that made every family resolve to one generic face
-        # (caught live: all 12 Windows families measured width 902).
-        aliases = tree.findall(".//alias")
-        assert aliases, "no alias rules generated"
-        for a in aliases:
-            claimed = a.find("family").text
-            accept = a.find("accept/family").text
-            assert claimed != accept, f"self-referential alias: {claimed} -> {accept}"
-        assert "Arial" in text and "Liberation Sans" in text
+        # Hard pattern rewrites (<match target="pattern"> + prepend,
+        # strong binding), not <alias><accept>: two live runs showed
+        # <accept> fired for some families and silently fell through
+        # for others (Consolas/Georgia/Segoe UI -> generic default).
+        # The 2026-10-07 run decoded every miss as exactly the same
+        # default-face width.
+        rewrites = root.findall("match")
+        assert rewrites, "no rewrite rules generated"
+        for m in rewrites:
+            assert m.get("target") == "pattern"
+            edit = m.find("edit")
+            assert edit is not None and edit.get("binding") == "strong"
+            assert edit.get("mode") == "prepend"
+        claimed_names = [m.find("test/string").text for m in rewrites]
+        target_names = [m.find("edit/string").text for m in rewrites]
+        assert "Arial" in claimed_names and "Liberation Sans" in target_names
+        assert not (set(claimed_names) & set(target_names)), \
+            "a rewrite maps a name onto itself (no-op)"
         assert "/etc/fonts" not in text          # host config must not leak in
         assert "/usr/share/fonts" not in text    # host font dirs must not leak either
         assert str(bundle.resolve()) in text     # points at the claimed-OS bundle
