@@ -241,27 +241,29 @@ def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
             "a rewrite maps a name onto itself (no-op)"
         assert "/etc/fonts" not in text          # host config must not leak in
         assert "/usr/share/fonts" not in text    # host font dirs must not leak either
-        assert str(bundle.resolve()) in text     # points at the claimed-OS bundle
-        # Pool visibility rules: the flat shared pool is filtered to the
-        # claimed manifest's files via rejectfont/acceptfont (the
-        # 2026-10-12 run showed Ubuntu and DejaVu Sans Mono resolving
-        # on a Windows claim without this).
-        rejects = root.findall("selectfont/rejectfont")
-        accepts = root.findall("selectfont/acceptfont")
-        assert rejects, "no rejectfont rule generated"
-        assert accepts, "no acceptfont rule generated"
-        accept_pattern = accepts[0].find("pattern")
-        assert accept_pattern is not None and accept_pattern.text, \
-            "acceptfont pattern missing/empty"
-        # The pattern is built from the claimed manifest's own file
-        # names, escaped for fontconfig's glob syntax.
-        assert "LiberationSans" in accept_pattern.text.replace("\\", "")
-        assert "Ubuntu" not in accept_pattern.text.replace("\\", ""), \
-            "an unclaimed pool family appears in the accept pattern"
-        assert accepts[0].find("glob").text == "*.tt[fc]"
-        # reject order: fontconfig applies selectfont rules in order,
-        # so the reject must precede the accept in the file.
-        assert text.index("rejectfont") < text.index("acceptfont")
+        # Symlink-pool visibility (v3): the session dir contains ONLY
+        # the claimed manifest's files, and that dir is the ONLY <dir>.
+        # The 2026-10-12 1.2.1/1.2.2 runs showed fontconfig's
+        # selectfont/rejectfont globs can't do this (globs take only *
+        # and ?, no character classes), so filtering is done by
+        # simply not exposing unreferenced files at all.
+        assert not root.findall("selectfont"), \
+            "selectfont rules are back; the symlink pool should make them unnecessary"
+        session_dirs = root.findall("dir")
+        assert len(session_dirs) == 1, f"exactly one <dir> expected, got {len(session_dirs)}"
+        session_font_dir = Path(session_dirs[0].text)
+        assert session_font_dir.name == "fonts" \
+            and session_font_dir.parent.resolve() == Path(font_env["FONTCONFIG_PATH"]).resolve()
+        links = list(session_font_dir.iterdir())
+        assert links, "no fonts linked into the session dir"
+        # Every link points at a file the claimed manifest references,
+        # and no unreferenced pool family is present by name.
+        link_names = {l.name for l in links}
+        assert "LiberationSans-Regular.ttf" in link_names
+        assert "Ubuntu-Regular.ttf" not in link_names, \
+            "unreferenced pool file linked into a Windows claim"
+        for l in links:
+            assert l.is_symlink() or l.is_file(), f"{l.name} is neither link nor file"
     finally:
         # The full launch path cleans this up in close(); a direct call
         # doesn't, so the test does it itself.
@@ -274,6 +276,7 @@ def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
     mac_env = jb._generate_env_vars(mac, make_geo(), "http://proxy.invalid:1")
     mac_root = tmp_path / "mac"
     (mac_root / "macos").mkdir(parents=True)
+    shutil.copy(REPO / "fonts" / "macos" / "manifest.json", mac_root / "macos" / "manifest.json")
     (mac_root / "macos" / "NotoSans-Regular.ttf").write_bytes(b"\x00\x01\x00\x00")
     mac_font_env = jb._setup_session_fonts(mac, mac_env, fonts_root=mac_root)
     try:

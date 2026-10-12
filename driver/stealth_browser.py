@@ -1180,54 +1180,49 @@ class Jbium:
             logger.warning(f"  Could not read {manifest_path} ({e}) — fonts.conf written without family aliases")
 
         # The claimed OS's manifest decides which pool files the session
-        # exposes: everything the manifest references stays visible,
-        # every OTHER file in the shared pool (Ubuntu, DejaVu — families
-        # a Windows/macOS claim must never show) is rejected by pattern.
-        # This is what makes the deduplicated shared pool safe: one flat
-        # <dir> for storage, per-claim visibility rules on top. Without
-        # it, the 2026-10-12 live run showed "Ubuntu" and "DejaVu Sans
-        # Mono" resolving on a Windows claim (name-probe leak).
+        # exposes. selectfont/acceptfont rules turned out to be the
+        # wrong tool (verified live 2026-10-12: fontconfig globs take
+        # only * and ?, so *.tt[fc] matched nothing, and accept rules
+        # are additive — nothing was actually hidden, and the negative
+        # probe correctly refused to certify it). The deterministic
+        # approach: a per-session directory of symlinks to exactly the
+        # manifest-referenced files, and that directory is the ONLY
+        # <dir>. Unreferenced families are not "rejected" — they are
+        # simply not present. Symlinks (not copies) so the pool stays
+        # deduplicated on disk; the whole directory is removed in
+        # close() along with the fontconfig dir.
         referenced = set()
         try:
             for group in manifest.get("fonts", {}).values():
                 for fname in group.get("files", []):
                     referenced.add(fname)
         except NameError:
-            referenced = set()  # manifest unreadable; no reject rules
+            referenced = set()  # manifest unreadable; no symlinks
 
-        if referenced:
-            accept = "|".join(
-                re.escape(re.sub(r"\.tt[fc]$", "", f, flags=re.IGNORECASE))
-                for f in sorted(referenced)
+        session_font_dir = cache_path / "fonts"
+        session_font_dir.mkdir(parents=True, exist_ok=True)
+        linked = 0
+        for fname in sorted(referenced):
+            src = font_dir / fname
+            if src.exists():
+                os.symlink(src.resolve(), session_font_dir / fname)
+                linked += 1
+        if not linked:
+            logger.warning(
+                f"  No manifest-referenced font files found in {font_dir} — "
+                "no fontconfig override (page sees the host's fonts). "
+                "Reinstall the wheel or run 'jbium fetch-fonts'."
             )
-            reject_xml = (
-                f"  <selectfont>\n"
-                f"    <rejectfont>\n"
-                f"      <glob>*.tt[fc]</glob>\n"
-                f"      <glob>*.otf</glob>\n"
-                f"    </rejectfont>\n"
-                f"  </selectfont>\n"
-                f"  <selectfont>\n"
-                f"    <acceptfont>\n"
-                f"      <glob>*.tt[fc]</glob>\n"
-                f"      <glob>*.otf</glob>\n"
-                f"      <pattern>{accept}</pattern>\n"
-                f"    </acceptfont>\n"
-                f"  </selectfont>\n"
-            )
-            # rejectfont glob first, acceptfont pattern overrides it for
-            # exactly the referenced files: fontconfig applies
-            # selectfont rules in order, and an accept after a reject
-            # re-admits the matching ones.
-        else:
-            reject_xml = ""
+            shutil.rmtree(cache_path, ignore_errors=True)
+            self._fontconfig_dir = None
+            return {}
 
         config = f"""<?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
-  <dir>{font_dir.resolve()}</dir>
+  <dir>{session_font_dir.resolve()}</dir>
   <cachedir>{(cache_path / "cache").resolve()}</cachedir>
-{aliases_xml}{reject_xml}</fontconfig>
+{aliases_xml}</fontconfig>
 """
         (cache_path / "fonts.conf").write_text(config, encoding="utf-8")
 
@@ -1257,48 +1252,42 @@ class Jbium:
                 # font's own family name).
                 if probe.returncode != 0 or resolved_family != target:
                     bad.append(f"{claimed!r}->{resolved_family!r} (want {target!r})")
-            if reject_xml:
-                # Negative probe: a family whose file the claimed
-                # manifest does NOT reference must not resolve to that
-                # file. Keyed by platform_dir's actual values
-                # ("windows"/"macos"/"linux"); falls back to a safe
-                # default list rather than None if anything about the
-                # claim is unexpected (the 2026-10-12 1.2.1 regression:
-                # a capitalized-key mismatch made this lookup return
-                # None and crash the whole verification, which
-                # downgraded every launch to host fonts).
-                hidden_candidates = {
-                    "windows": ["Ubuntu", "DejaVu Sans", "DejaVu Sans Mono"],
-                    "macos": ["Ubuntu", "DejaVu Sans", "DejaVu Serif"],
-                }.get(platform_dir) or ["Ubuntu", "DejaVu Sans"]
-                referenced = set()
-                for group in manifest.get("fonts", {}).values():
-                    referenced.update(group.get("files", []))
-                for hidden_family in hidden_candidates:
-                    probe = subprocess.run(
-                        ["fc-match", "-f", "%{file}", hidden_family],
-                        env=verify_env,
-                        capture_output=True, text=True, timeout=15,
+            # Negative probe: a family whose file the claimed manifest
+            # does NOT reference must not resolve to that file — with
+            # the symlink-pool layout, its file simply is not in <dir>,
+            # so fc-match must land on a *referenced* file (or nothing).
+            # Keyed by platform_dir's actual lowercase values, with a
+            # safe fallback list (the 1.2.1 regression: a capitalized-
+            # key mismatch returned None and crashed verification).
+            hidden_candidates = {
+                "windows": ["Ubuntu", "DejaVu Sans", "DejaVu Sans Mono"],
+                "macos": ["Ubuntu", "DejaVu Sans", "DejaVu Serif"],
+            }.get(platform_dir) or ["Ubuntu", "DejaVu Sans"]
+            for hidden_family in hidden_candidates:
+                probe = subprocess.run(
+                    ["fc-match", "-f", "%{file}", hidden_family],
+                    env=verify_env,
+                    capture_output=True, text=True, timeout=15,
+                )
+                matched_file = probe.stdout.strip()
+                # The hidden family must not resolve to an
+                # unreferenced pool file.
+                matched_name = Path(matched_file).name
+                if matched_file and matched_name not in referenced:
+                    bad.append(
+                        f"hidden family {hidden_family!r} resolves to {matched_name!r}"
                     )
-                    matched_file = probe.stdout.strip()
-                    # The family must either not match a rejected file,
-                    # or match a file the claim legitimately references.
-                    matched_name = Path(matched_file).name
-                    if matched_file and matched_name not in referenced:
-                        bad.append(
-                            f"rejected family {hidden_family!r} resolves to {matched_name!r}"
-                        )
-                    break  # one negative probe is enough per launch
+                break  # one negative probe is enough per launch
             if bad:
                 raise RuntimeError("; ".join(bad[:5]) + (" ..." if len(bad) > 5 else ""))
             sample = alias_pairs[0] if alias_pairs else ("sans-serif", "sans-serif")
-            logger.info(f"  Font profile (driver fontconfig v2/hard-rewrites): {platform_dir} bundle, "
-                        f"{n_aliases} hard aliases, "
+            logger.info(f"  Font profile (driver fontconfig v3/symlink-pool): {platform_dir} claim, "
+                        f"{n_aliases} hard aliases + {linked} linked fonts, "
                         f"all {n_aliases} verified via fc-match "
                         f"({sample[0]!r} -> {sample[1]!r})")
         except FileNotFoundError:
-            logger.info(f"  Font profile (driver fontconfig v2/hard-rewrites): {platform_dir} bundle "
-                        f"({n_aliases} hard aliases) "
+            logger.info(f"  Font profile (driver fontconfig v3/symlink-pool): {platform_dir} claim "
+                        f"({n_aliases} hard aliases, {linked} linked fonts) "
                         "via private fontconfig (fc-match not installed; aliases unverified)")
         except Exception as e:
             logger.warning(
