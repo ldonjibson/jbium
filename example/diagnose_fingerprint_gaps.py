@@ -13,28 +13,31 @@ and never contaminated by IP reputation):
 
   1. FONTS -- the claimed OS vs. what the page can actually
      render. The repo's documented font defense was dead code
-     at runtime (driver/font_manager.py had no callers, the
-     fonts/ bundles held manifest.json but no font files, no
-     patch read STEALTH_FONT_OS/STEALTH_FONT_REGION, and no
-     example or test ever checked fonts). Since 2026-10-06 the
-     driver writes a per-session fontconfig itself at launch
-     (stealth_browser._setup_session_fonts), aliasing every
-     claimed-OS family to its metric-compatible substitute
-     from the bundle's manifest -- but it needs the font files
-     present: `python fonts/download_fonts.py --all` (repo)
-     or `jbium fetch-fonts` (pip install). Without them the
-     driver logs a warning and falls back to the host's fonts,
-     and this check will FAIL exactly as before the fix.
+     at runtime until 2026-10-06, when the driver began writing
+     a per-session fontconfig at launch
+     (stealth_browser._setup_session_fonts), hard-rewriting
+     every claimed-OS family to its metric-compatible substitute
+     from the bundle's manifest. The wheel ships the font pool
+     as package-data (fonts/ inside jbium), so a pip install
+     needs no separate fetch step; `jbium fetch-fonts` remains
+     the refresh/repair path. Every alias is fc-match-verified
+     per launch -- the "all N hard aliases ... verified" log
+     line is the driver's own verdict.
      Detection here uses the same differential-measurement
      technique real fingerprinters use (an unavailable family
      falls back to the same base font, so its measured width
      equals the baseline; a resolved family -- real or
-     fontconfig-substituted -- differs). Two verdicts:
-       - claimed-OS families that do NOT resolve -> the page
-         cannot render fonts its User-Agent says exist;
-       - host-only families (DejaVu/Liberation/Ubuntu/Noto)
-         that DO resolve on a Windows/macOS claim -> the page
-         sees host fonts real Windows/macOS never ships.
+     fontconfig-substituted -- differs). Verdicts:
+       - claimed-OS families that do NOT resolve, or all
+         resolve to ONE face (one width) -> the rewrite rules
+         are not applying (stale driver copy, or manifest
+         'family' names not matching the fonts);
+       - host-only families (DejaVu/Ubuntu) that resolve on a
+         Windows/macOS claim -> the shared font pool exposes
+         them by name (lower-severity tell). A *substitute*
+         family (Liberation Sans for Arial) resolving is the
+         defense working, not a leak -- this script filters
+         those out via the manifest.
      Honest limitation: differential detection proves family
      *resolution*, not metric fidelity -- verifying that a
      substitute has the real font's metrics would need
@@ -347,11 +350,54 @@ FONT_EXPECTED = {
 
 # Families that exist on a typical Linux server but on NO consumer
 # Windows/macOS install. If one of these resolves while the profile
-# claims Windows/macOS, the page is seeing through the claimed OS.
+# claims Windows/macOS, the page is seeing through the claimed OS --
+# UNLESS it's the substitute the manifest deliberately installed for
+# one of the claimed-OS families (Liberation Sans IS the Arial
+# substitute, so a Windows claim legitimately exposes it; that's the
+# defense working, not a leak). _substitute_families() below filters
+# the legitimate ones out per claim.
 HOST_ONLY_FAMILIES = [
     "DejaVu Sans", "DejaVu Sans Mono", "Liberation Mono",
     "Liberation Sans", "Liberation Serif", "Noto Sans", "Ubuntu",
 ]
+
+
+def _substitute_families(ua_platform: str):
+    """
+    The font families the claimed OS's manifest legitimately installs
+    (its substitutes' real names, e.g. "Liberation Sans" for Arial on a
+    Windows claim). Read from the same manifests the driver reads, in
+    the same layouts: pip installs put a flat pool + per-OS manifests
+    inside the jbium package; a repo checkout has fonts/<platform>/.
+    Returns {} when neither is findable -- the host-only check then
+    runs unfiltered (worst case: a few false FAILs, never a false PASS).
+    """
+
+    import json
+
+    platform_map = {"Windows": "windows", "macOS": "macos", "Linux": "linux"}
+    platform_dir = platform_map.get(ua_platform)
+    if not platform_dir:
+        return {}
+
+    search_roots = []
+    try:  # pip install: manifests live inside the jbium package
+        import jbium
+        search_roots.append(Path(jbium.__file__).parent / "fonts")
+    except ImportError:
+        pass
+    # repo checkout: manifests live at the repo root next to driver/
+    search_roots.append(Path(__file__).parent.parent / "fonts")
+
+    for root in search_roots:
+        manifest_path = root / platform_dir / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            return {g.get("family") for g in manifest.get("fonts", {}).values()
+                    if g.get("family")}
+        except (OSError, ValueError):
+            continue
+    return {}
 
 
 def _call(fn_js: str) -> str:
@@ -390,9 +436,9 @@ def report_font_checks(probe, device, env_vars, failures: int, warnings: int):
 
     print(f"\n--- Fonts vs. claimed OS ({claimed}, "
           f"STEALTH_FONT_OS={font_os}, STEALTH_FONT_REGION={font_region}) ---")
-    print("  (driver writes a per-session fontconfig at launch; needs the font"
-          " files: 'python fonts/download_fonts.py --all' (repo) or"
-          " 'jbium fetch-fonts' (pip install))")
+    print("  (driver writes a per-session fontconfig at launch from the"
+          " claimed-OS manifest's aliases; the wheel ships the font pool,"
+          " 'jbium fetch-fonts' only refreshes it)")
 
     expected = FONT_EXPECTED.get(claimed)
     if expected is None:
@@ -425,13 +471,31 @@ def report_font_checks(probe, device, env_vars, failures: int, warnings: int):
                   " 'family' field and _setup_session_fonts)")
 
     if claimed in ("Windows", "macOS"):
+        # The shared font pool means the page can technically enumerate
+        # every pool family; the tell that matters is families that are
+        # NEITHER shipped by the claimed OS NOR a deliberate substitute
+        # for one of its families (DejaVu/Ubuntu resolving on a Windows
+        # claim). Liberation Sans resolving on a Windows claim is the
+        # Arial substitute doing its job -- not a leak -- so filter it
+        # out via the manifest the driver itself used.
+        legit = _substitute_families(claimed)
         for family in HOST_ONLY_FAMILIES:
+            if family in legit:
+                print(f"  [SKIP] {family} resolves -- it is a deliberate "
+                      f"substitute for a {claimed} family (per the manifest)")
+                continue
             r = results.get(family, {})
             if not _report(f"host-only {family} invisible to the page (real"
                            f" {claimed} does not ship it)",
                            not r.get("resolves", False),
                            f"fonts.check={r.get('check')!r}"):
                 failures += 1
+        if not legit:
+            print("  [WARN] could not load the claimed-OS font manifest to "
+                  "distinguish substitutes from leaks -- every host-only "
+                  "family that resolves is reported above, some may be "
+                  "legitimate substitutes")
+            warnings += 1
 
     return failures, warnings
 
@@ -683,13 +747,25 @@ async def main(url: str, proxy_url: str = None) -> None:
     print(f"{'=' * 62}")
     print("""
 Diagnosis guide (finding -> root cause):
-  fonts missing for claimed OS / host families visible
-      -> the font files are still not installed: run
-         'python fonts/download_fonts.py --all' (repo) or
-         'jbium fetch-fonts' (pip install). The driver's
-         per-session fontconfig only builds when the claimed
-         OS's bundle actually contains .ttf files; until then
-         it warns and leaves the host's fonts in place
+  claimed-OS families FAIL (all one width, or resolving to a
+  default face)
+      -> the per-session fontconfig's hard rewrites are not applying:
+         stale driver copy (pre-2026-10-07 builds used unreliable
+         <alias><accept> rules), or the manifest's 'family' names
+         don't match the fonts' real names. The launch log's
+         "all N hard aliases ... verified via fc-match" line is the
+         driver's own verdict on the same question
+  claimed-OS families FAIL with fonts.check=False everywhere
+      -> the font pool is actually missing (the launch log warned
+         "Font pool empty" and fell back to host fonts): reinstall
+         the wheel, or run 'jbium fetch-fonts' (pip) /
+         'python fonts/download_fonts.py --all' (repo)
+  host-only DejaVu/Ubuntu families resolve on a Windows/macOS claim
+      -> the shared font pool exposes every bundled family by name;
+         lower severity than a measurement leak (pages measuring the
+         standard families is far more common than family-name
+         probing), but real: needs per-claim <selectfont> filtering
+         or duplicated pools if it ever shows up in a block verdict
   battery spec violation + 1800/14400 constants
       -> something set STEALTH_BATTERY_* again (old driver copy,
          fingerprint_overrides) -- since 2026-10-06 the driver
