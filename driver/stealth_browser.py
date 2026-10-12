@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -1178,34 +1179,64 @@ class Jbium:
             # bundle fonts still load via <dir> without aliases.
             logger.warning(f"  Could not read {manifest_path} ({e}) — fonts.conf written without family aliases")
 
-        # The claimed OS's bundle is the ONLY font directory. Including
-        # /usr/share/fonts here (as the first version did) leaked the
-        # host's DejaVu straight through the "private" config — caught
-        # live on the second run, where "DejaVu Sans Mono" resolved
-        # while the profile claimed Windows. The trade-off is
-        # deliberate: a page using an unusual CJK/script family the
-        # bundle lacks falls back to fontconfig's generic default
-        # rather than revealing the host's fonts, which is the safer
-        # failure mode for a fingerprint-consistency tool. If the
-        # config turns out unusable for real browsing (tofu boxes for
-        # scripts the bundle doesn't cover), the fix is more bundled
-        # families, not re-admitting host dirs.
+        # The claimed OS's manifest decides which pool files the session
+        # exposes: everything the manifest references stays visible,
+        # every OTHER file in the shared pool (Ubuntu, DejaVu — families
+        # a Windows/macOS claim must never show) is rejected by pattern.
+        # This is what makes the deduplicated shared pool safe: one flat
+        # <dir> for storage, per-claim visibility rules on top. Without
+        # it, the 2026-10-12 live run showed "Ubuntu" and "DejaVu Sans
+        # Mono" resolving on a Windows claim (name-probe leak).
+        referenced = set()
+        try:
+            for group in manifest.get("fonts", {}).values():
+                for fname in group.get("files", []):
+                    referenced.add(fname)
+        except NameError:
+            referenced = set()  # manifest unreadable; no reject rules
+
+        if referenced:
+            accept = "|".join(
+                re.escape(re.sub(r"\.tt[fc]$", "", f, flags=re.IGNORECASE))
+                for f in sorted(referenced)
+            )
+            reject_xml = (
+                f"  <selectfont>\n"
+                f"    <rejectfont>\n"
+                f"      <glob>*.tt[fc]</glob>\n"
+                f"      <glob>*.otf</glob>\n"
+                f"    </rejectfont>\n"
+                f"  </selectfont>\n"
+                f"  <selectfont>\n"
+                f"    <acceptfont>\n"
+                f"      <glob>*.tt[fc]</glob>\n"
+                f"      <glob>*.otf</glob>\n"
+                f"      <pattern>{accept}</pattern>\n"
+                f"    </acceptfont>\n"
+                f"  </selectfont>\n"
+            )
+            # rejectfont glob first, acceptfont pattern overrides it for
+            # exactly the referenced files: fontconfig applies
+            # selectfont rules in order, and an accept after a reject
+            # re-admits the matching ones.
+        else:
+            reject_xml = ""
+
         config = f"""<?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
   <dir>{font_dir.resolve()}</dir>
   <cachedir>{(cache_path / "cache").resolve()}</cachedir>
-{aliases_xml}</fontconfig>
+{aliases_xml}{reject_xml}</fontconfig>
 """
         (cache_path / "fonts.conf").write_text(config, encoding="utf-8")
 
         # Verify EVERY alias against fc-match before trusting the
-        # session. The 2026-10-07 live run showed one sample probe is
-        # not enough: 'Arial' verified fine while Consolas/Georgia/
-        # Segoe UI silently fell through to the generic default.
-        # Per-alias verification means the launch log states exactly
-        # which families resolve where, and a bad config falls back to
-        # host fonts instead of half-working.
+        # session, plus one negative probe: a family the rejectfont
+        # rules should have hidden (e.g. Ubuntu on a Windows claim)
+        # must NOT resolve to a rejected file. The 2026-10-07 live run
+        # showed one sample probe is not enough; the 2026-10-12 run
+        # showed the pool-name leak needs its own check.
         verify_env = {
             **os.environ,
             "FONTCONFIG_PATH": str(cache_path),
@@ -1226,14 +1257,44 @@ class Jbium:
                 # font's own family name).
                 if probe.returncode != 0 or resolved_family != target:
                     bad.append(f"{claimed!r}->{resolved_family!r} (want {target!r})")
+            if reject_xml:
+                # Negative probe: a family whose file the claimed
+                # manifest does NOT reference must not resolve to that
+                # file. Uses a small static list of pool families that
+                # never belong to Windows/macOS claims (Ubuntu,
+                # DejaVu) rather than parsing font name tables.
+                hidden_candidates = {
+                    "Windows": ["Ubuntu", "DejaVu Sans", "DejaVu Sans Mono"],
+                    "macOS": ["Ubuntu", "DejaVu Sans", "DejaVu Serif"],
+                }.get(platform_dir if platform_dir in ("windows", "macos") else "Windows")
+                referenced = set()
+                for group in manifest.get("fonts", {}).values():
+                    referenced.update(group.get("files", []))
+                for hidden_family in hidden_candidates:
+                    probe = subprocess.run(
+                        ["fc-match", "-f", "%{file}", hidden_family],
+                        env=verify_env,
+                        capture_output=True, text=True, timeout=15,
+                    )
+                    matched_file = probe.stdout.strip()
+                    # The family must either not match a rejected file,
+                    # or match a file the claim legitimately references.
+                    matched_name = Path(matched_file).name
+                    if matched_file and matched_name not in referenced:
+                        bad.append(
+                            f"rejected family {hidden_family!r} resolves to {matched_name!r}"
+                        )
+                    break  # one negative probe is enough per launch
             if bad:
                 raise RuntimeError("; ".join(bad[:5]) + (" ..." if len(bad) > 5 else ""))
             sample = alias_pairs[0] if alias_pairs else ("sans-serif", "sans-serif")
-            logger.info(f"  Font profile: {platform_dir} bundle, {n_aliases} hard aliases, "
+            logger.info(f"  Font profile (driver fontconfig v2/hard-rewrites): {platform_dir} bundle, "
+                        f"{n_aliases} hard aliases, "
                         f"all {n_aliases} verified via fc-match "
                         f"({sample[0]!r} -> {sample[1]!r})")
         except FileNotFoundError:
-            logger.info(f"  Font profile: {platform_dir} bundle ({n_aliases} hard aliases) "
+            logger.info(f"  Font profile (driver fontconfig v2/hard-rewrites): {platform_dir} bundle "
+                        f"({n_aliases} hard aliases) "
                         "via private fontconfig (fc-match not installed; aliases unverified)")
         except Exception as e:
             logger.warning(

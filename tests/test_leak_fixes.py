@@ -242,6 +242,26 @@ def test_setup_session_fonts_writes_fontconfig_with_aliases(tmp_path):
         assert "/etc/fonts" not in text          # host config must not leak in
         assert "/usr/share/fonts" not in text    # host font dirs must not leak either
         assert str(bundle.resolve()) in text     # points at the claimed-OS bundle
+        # Pool visibility rules: the flat shared pool is filtered to the
+        # claimed manifest's files via rejectfont/acceptfont (the
+        # 2026-10-12 run showed Ubuntu and DejaVu Sans Mono resolving
+        # on a Windows claim without this).
+        rejects = root.findall("selectfont/rejectfont")
+        accepts = root.findall("selectfont/acceptfont")
+        assert rejects, "no rejectfont rule generated"
+        assert accepts, "no acceptfont rule generated"
+        accept_pattern = accepts[0].find("pattern")
+        assert accept_pattern is not None and accept_pattern.text, \
+            "acceptfont pattern missing/empty"
+        # The pattern is built from the claimed manifest's own file
+        # names, escaped for fontconfig's glob syntax.
+        assert "LiberationSans" in accept_pattern.text.replace("\\", "")
+        assert "Ubuntu" not in accept_pattern.text.replace("\\", ""), \
+            "an unclaimed pool family appears in the accept pattern"
+        assert accepts[0].find("glob").text == "*.tt[fc]"
+        # reject order: fontconfig applies selectfont rules in order,
+        # so the reject must precede the accept in the file.
+        assert text.index("rejectfont") < text.index("acceptfont")
     finally:
         # The full launch path cleans this up in close(); a direct call
         # doesn't, so the test does it itself.

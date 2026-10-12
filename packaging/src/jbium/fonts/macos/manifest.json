@@ -11,7 +11,8 @@
       "substitutes_for": [
         "SF Pro Text",
         "SF Pro Display",
-        "Helvetica Neue"
+        "Helvetica Neue",
+        "Optima"
       ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
@@ -41,7 +42,8 @@
       "substitutes_for": [
         "Times",
         "Georgia",
-        "Baskerville"
+        "Baskerville",
+        "Palatino"
       ],
       "metric_compatible": false,
       "license": "SIL Open Font License 1.1",
