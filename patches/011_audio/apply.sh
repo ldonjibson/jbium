@@ -83,6 +83,9 @@ NOISE_HEADER = """
 
 #include <cstdint>
 #include <cstdlib>
+#include <unordered_set>
+
+#include "base/no_destructor.h"
 
 namespace stealth {
 
@@ -96,9 +99,25 @@ class AudioNoise {
   // sparse subset of samples in a raw float32 PCM buffer. Magnitude
   // is far below anything audible — intended to change a naive
   // sample-hash fingerprint, not to alter perceived audio.
-  static void ApplySparseNoise(float* samples, uint32_t count) {
-    if (!IsEnabled() || !samples || count == 0) {
+  //
+  // owner_key: the identity of the buffer being noised (the returned
+  // DOMFloat32Array's pointer at the getChannelData() call site).
+  // getChannelData() returns the SAME backing array on every call,
+  // and the noise is additive — without this guard, a page calling
+  // getChannelData() twice would see the values CHANGE between calls
+  // (2x the delta on the second read), which real Chrome never does.
+  // The once-per-key guard keeps repeated reads stable within the
+  // session (the fingerprint stays constant per session, like a real
+  // machine) while still differing across sessions. Cost: one pointer
+  // per noised buffer in a session-lifetime set.
+  static void ApplySparseNoise(float* samples, uint32_t count,
+                               const void* owner_key) {
+    if (!IsEnabled() || !samples || count == 0 || owner_key == nullptr) {
       return;
+    }
+    static base::NoDestructor<std::unordered_set<const void*>> noised;
+    if (!noised->insert(owner_key).second) {
+      return;  // already noiced this exact backing array
     }
     const uint32_t seed = SessionSeed();
     const uint32_t stride = 97 + (seed % 53);

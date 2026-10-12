@@ -706,24 +706,18 @@ class Jbium:
         # switch added in _spawn_browser.
 
         # ── Battery API (Patch 010) ──
-        # Deliberately NOT set. Patch 010's getters return their
-        # hardcoded constants (chargingTime=1800, dischargingTime=14400)
-        # whenever either var is present, *regardless of charging state*
-        # -- a spec violation (the Battery Status spec requires
-        # dischargingTime=Infinity while charging, and vice versa) that
-        # any script can flag in one line, and the identical constants
-        # across every jbium session ever built are a cross-session
-        # cluster signature. Unset, the patch passes the real readings
-        # through: on a battery-less server that's the desktop-AC profile
+        # Deliberately NOT set by default. Since the 2026-10-12 rebuild
+        # patch 010's getters are spec-CORRECT when the vars are set
+        # (chargingTime=Infinity while discharging, dischargingTime=
+        # Infinity while charging -- the unconditional 1800/14400
+        # constants were a one-line bot check, caught live 2026-10-06).
+        # The driver still leaves them unset: on a battery-less server
+        # the real-readings passthrough reports the desktop-AC profile
         # (level=1, charging=true, chargingTime=0,
-        # dischargingTime=Infinity) -- spec-consistent, and exactly what
-        # every real desktop Chrome reports. Verified live (2026-10-06):
-        # setting these vars produced the spec FAIL; leaving them unset
-        # produces the desktop-AC values.
-        # Patch 010's constant-return design needs the rebuild to fix
-        # properly (see patches/010_misc/apply.sh); until then, the
-        # real-readings passthrough is the safer default. Callers can
-        # still force a spoof via launch(fingerprint_overrides=...).
+        # dischargingTime=Infinity), which every real desktop Chrome
+        # also reports -- no spoof needed. Callers wanting a spoofed
+        # battery can still set them via launch(fingerprint_overrides=
+        # ...) and now get spec-consistent values.
 
         return env_vars
 

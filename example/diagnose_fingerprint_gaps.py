@@ -761,11 +761,14 @@ Diagnosis guide (finding -> root cause):
          the wheel, or run 'jbium fetch-fonts' (pip) /
          'python fonts/download_fonts.py --all' (repo)
   host-only DejaVu/Ubuntu families resolve on a Windows/macOS claim
-      -> the shared font pool exposes every bundled family by name;
-         lower severity than a measurement leak (pages measuring the
-         standard families is far more common than family-name
-         probing), but real: needs per-claim <selectfont> filtering
-         or duplicated pools if it ever shows up in a block verdict
+      -> FIXED in driver 1.2.3 (v3 symlink-pool): the session dir
+         holds only the claimed manifest's files, so unreferenced
+         families are structurally absent. Seeing this FAIL again
+         means a stale driver copy -- check the launch log for
+         "fontconfig v3/symlink-pool". (The earlier v2 attempts used
+         selectfont/rejectfont globs, which fontconfig's glob syntax
+         cannot express: globs take only * and ?, no character
+         classes, and accept rules are additive unions.)
   battery spec violation + 1800/14400 constants
       -> something set STEALTH_BATTERY_* again (old driver copy,
          fingerprint_overrides) -- since 2026-10-06 the driver

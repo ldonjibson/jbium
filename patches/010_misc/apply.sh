@@ -63,7 +63,9 @@ BATTERY_HEADER = """
 #ifndef STEALTH_BATTERY_H_
 #define STEALTH_BATTERY_H_
 
+#include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <string>
 
 #include "base/no_destructor.h"
@@ -204,17 +206,31 @@ else:
             ),
             (
                 "double BatteryManager::chargingTime()",
-                "  // STEALTH PATCH: plausible charge duration (30 min).\n"
+                "  // STEALTH PATCH: spec-consistent durations. Per the Battery\n"
+                "  // Status spec, chargingTime is Infinity while discharging;\n"
+                "  // while charging it counts up to full (30 min here). The\n"
+                "  // original body returned a constant 1800 regardless of\n"
+                "  // charging state -- a one-line bot check, caught live\n"
+                "  // 2026-10-06 (patched sessions failed, every real device\n"
+                "  // passes).\n"
                 "  if (stealth::BatterySpoof::IsSpoofed()) {\n"
-                "    return 1800.0;\n"
+                "    return stealth::BatterySpoof::GetCharging(\n"
+                "        battery_status_.Charging())\n"
+                "        ? 1800.0\n"
+                "        : std::numeric_limits<double>::infinity();\n"
                 "  }\n"
                 "  return battery_status_.charging_time().InSecondsF();",
             ),
             (
                 "double BatteryManager::dischargingTime()",
-                "  // STEALTH PATCH: plausible battery life (4 hours).\n"
+                "  // STEALTH PATCH: spec-consistent durations (see\n"
+                "  // chargingTime): dischargingTime is Infinity while\n"
+                "  // charging, and the battery life (4 hours) while not.\n"
                 "  if (stealth::BatterySpoof::IsSpoofed()) {\n"
-                "    return 14400.0;\n"
+                "    return stealth::BatterySpoof::GetCharging(\n"
+                "        battery_status_.Charging())\n"
+                "        ? std::numeric_limits<double>::infinity()\n"
+                "        : 14400.0;\n"
                 "  }\n"
                 "  return battery_status_.discharging_time().InSecondsF();",
             ),

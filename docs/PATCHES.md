@@ -405,20 +405,22 @@ third_party/blink/renderer/modules/battery/battery_manager.cc
 - `STEALTH_FILTER_WEBRTC` / `STEALTH_PROXY_IP` — driver-side
   WebRTC policy
 
-**Driver status (2026-10-06): both battery vars deliberately NOT set.**
-The getters above return their hardcoded 1800/14400 constants
-*regardless of charging state* whenever either var is present — a
-Battery Status spec violation (dischargingTime must be `Infinity`
-while charging, and vice versa) that a page flags in one line, and the
-identical constants across every jbium session ever built are a
-cross-session cluster signature. Verified live: setting the vars
-produced the spec FAIL; with them unset the patch passes the real
-readings through, and a battery-less server reports the desktop-AC
-profile (`level=1, charging=true, chargingTime=0,
+**Driver status: both battery vars deliberately NOT set by default.**
+The original getter bodies returned their hardcoded 1800/14400
+constants *regardless of charging state* whenever either var was
+present — a Battery Status spec violation (dischargingTime must be
+`Infinity` while charging, and vice versa) that a page flags in one
+line, caught live 2026-10-06. The 2026-10-12 rebuild fixed the getter
+bodies: with the vars set, chargingTime is now `Infinity` while
+discharging (1800s while charging) and dischargingTime is `Infinity`
+while charging (14400s while discharging) — spec-consistent in both
+states. The driver still leaves the vars unset by default: on a
+battery-less server the real-readings passthrough reports the
+desktop-AC profile (`level=1, charging=true, chargingTime=0,
 dischargingTime=Infinity`) — spec-consistent and identical to every
-real desktop Chrome. Until the getters respect charging state (needs
-a rebuild), unset is the safe default; callers can still force a
-spoof via `launch(fingerprint_overrides=...)`.
+real desktop Chrome, no spoof needed. Callers wanting a spoofed
+battery can set them via `launch(fingerprint_overrides=...)` and now
+get spec-correct values.
 
 ---
 
