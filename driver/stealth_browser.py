@@ -1243,8 +1243,11 @@ class Jbium:
                 resolved_family = probe.stdout.strip()
                 # A hard rewrite must land the requested name on the
                 # substitute's family (fc-match reports the matched
-                # font's own family name).
-                if probe.returncode != 0 or resolved_family != target:
+                # font's own family name). A font can declare several
+                # family names (variable fonts: "Noto Sans JP,Noto Sans
+                # JP Thin"), and %{family} prints them all comma-joined.
+                resolved_names = [f.strip() for f in resolved_family.split(",")]
+                if probe.returncode != 0 or target not in resolved_names:
                     bad.append(f"{claimed!r}->{resolved_family!r} (want {target!r})")
             # Negative probe: a family whose file the claimed manifest
             # does NOT reference must not resolve to that file — with
