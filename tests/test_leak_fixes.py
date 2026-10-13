@@ -349,6 +349,84 @@ def test_negative_probe_never_crashes_verification(monkeypatch):
             shutil.rmtree(fonts_root, ignore_errors=True)
 
 
+def test_manifest_claimed_families_are_unique_per_target(tmp_path):
+    """
+    A claimed family ('Helvetica Neue') listed in two groups'
+    substitutes_for with different targets (Noto Sans vs Liberation
+    Sans -- the 2026-10-13 live 'Helvetica Neue'->'Noto Sans' (want
+    'Liberation Sans') fallback) makes _setup_session_fonts emit two
+    contradictory hard rewrites: fontconfig stacks the first group's
+    target ahead, the second group's verification pair fails, and the
+    WHOLE font profile falls back to host fonts on every macOS-claim
+    launch. The manifests are data; this holds the shipped manifests
+    to one target per claimed family so the emission code never has to
+    guess which group wins.
+    """
+    for base in ("fonts", "packaging/src/jbium/fonts"):
+        for platform_dir in ("windows", "macos", "linux"):
+            manifest_path = REPO / base / platform_dir / "manifest.json"
+            if not manifest_path.exists():
+                continue
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            claimed_by = {}
+            for group_name, group in manifest.get("fonts", {}).items():
+                target = group.get("family")
+                for claimed in group.get("substitutes_for", []):
+                    assert claimed_by.get(claimed, target) == target, (
+                        f"{base}/{platform_dir}: {claimed!r} claimed by both "
+                        f"{claimed_by[claimed]!r} and {target!r} "
+                        f"({group_name} group) -- a contradictory alias"
+                    )
+                    claimed_by[claimed] = target
+
+
+def test_conflicting_claims_dedupe_to_first_group(tmp_path):
+    """
+    Even with a conflicting manifest (data bug), emission must not
+    produce two contradictory rewrites for one family: dedupe to the
+    first group's target, so fc-match verification can never fail on
+    a pair the same fonts.conf guaranteed to miss. The 2026-10-13 live
+    run discarded the entire macOS font profile this way.
+    """
+    import xml.etree.ElementTree as ET
+
+    jb = make_jbium()
+    device = make_device("macbook_pro")
+    env = jb._generate_env_vars(device, make_geo(), "http://proxy.invalid:1")
+
+    root = tmp_path / "conflict" / "macos"
+    root.mkdir(parents=True)
+    shutil.copy(REPO / "fonts" / "macos" / "manifest.json", root / "manifest.json")
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    # Reintroduce the exact live conflict: 'Helvetica Neue' -> Noto Sans
+    # (first group) AND -> Liberation Sans (second group).
+    manifest["fonts"]["noto_sans"]["substitutes_for"].append("Helvetica Neue")
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (root / "NotoSans-Regular.ttf").write_bytes(b"\x00\x01\x00\x00")
+    (root / "LiberationSans-Regular.ttf").write_bytes(b"\x00\x01\x00\x00")
+
+    font_env = jb._setup_session_fonts(device, env, fonts_root=tmp_path / "conflict")
+    try:
+        assert font_env != {}, "conflicting claims discarded the whole font profile"
+        conf = Path(font_env["FONTCONFIG_PATH"]) / "fonts.conf"
+        root_el = ET.parse(conf).getroot()
+        rewrites = root_el.findall("match")
+        assert rewrites, "no rewrite rules generated"
+        # Exactly ONE rule per claimed family: the first group's target
+        # ('Helvetica Neue' -> 'Noto Sans'), never two contradictory ones.
+        seen = {}
+        for m in rewrites:
+            claimed = m.find("test/string").text
+            target = m.find("edit/string").text
+            assert claimed not in seen, f"two rules emitted for {claimed!r}"
+            seen[claimed] = target
+        assert seen.get("Helvetica Neue") == "Noto Sans"
+        assert "Helvetica" in seen and seen["Helvetica"] == "Liberation Sans"
+    finally:
+        if font_env:
+            shutil.rmtree(font_env["FONTCONFIG_PATH"], ignore_errors=True)
+
+
 # ─────────────────────────────────────────────
 # Live tests (real browser through the driver's spawn path)
 # ─────────────────────────────────────────────

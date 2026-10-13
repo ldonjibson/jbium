@@ -1149,6 +1149,8 @@ class Jbium:
         # what fontconfig's generic machinery would do with the name.
         aliases_xml = ""
         alias_pairs = []
+        claimed_by: Dict[str, str] = {}
+        emitted = set()
         manifest_path = font_dir / "manifest.json"
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1157,6 +1159,24 @@ class Jbium:
                 if not target:
                     continue
                 for claimed in group.get("substitutes_for", []):
+                    # A claimed family may be listed by only one group:
+                    # two hard prepend rewrites for the same name stack
+                    # ([Noto Sans, Liberation Sans, <claimed>]), the
+                    # first group's target wins, and the other group's
+                    # verification pair then fails -- discarding the
+                    # whole font profile for a data bug (live 2026-10-13:
+                    # 'Helvetica Neue' claimed by noto_sans AND
+                    # liberation_sans in the macos manifest). First
+                    # group wins; the conflict is logged, not trusted.
+                    first = claimed_by.setdefault(claimed, target)
+                    if first != target:
+                        logger.warning(
+                            f"  manifest {manifest_path}: {claimed!r} claimed by both "
+                            f"{first!r} and {target!r} groups — using {first!r}"
+                        )
+                    if claimed in emitted:
+                        continue  # exact repeat of an already-emitted rule
+                    emitted.add(claimed)
                     aliases_xml += (
                         f"  <match target=\"pattern\">\n"
                         f"    <test qual=\"any\" name=\"family\">\n"
